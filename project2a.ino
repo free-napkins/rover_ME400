@@ -2,6 +2,7 @@
 #include "irhelper.h"
 #include <math.h>
 //
+//test change
 //  Create an instance of the lcdhelper class named oLCD
 //
 lcdhelper oLCD(ILI9163_4L, 3, 2, 9, 10, 7);
