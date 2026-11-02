@@ -3,6 +3,7 @@
 #include <math.h>
 //
 //test change
+//im making a test to see if github works
 //  Create an instance of the lcdhelper class named oLCD
 //
 lcdhelper oLCD(ILI9163_4L, 3, 2, 9, 10, 7);
@@ -38,11 +39,13 @@ void clearText(int32_t x, int32_t y, int32_t width, uint16_t color)
 
     oLCD.fillRect(xStart, y-6, width, 15, color);
 }
+bool Opt1 = false;
+bool Opt3 = false;
 //
 //  Option1 code
 //
 void Option1(char optionstate, char keypressed, bool initdisplay){
-   
+// set boolean Opt1 to true once this i complete -Gabe
 }
 //
 //  Option2 code
@@ -55,13 +58,22 @@ void Option2(char optionstate, char keypressed, bool initdisplay)
 //  Option3 code
 //
 void Option3(char optionstate, char keypressed, bool initdisplay){
-    
+//set boolean Opt3 to true once this is complete -Gabe
 }
 //
 //  Option4 code
 //
+void displayCordinates(double direction, double distance){
+        oLCD.LCDInitialize(PORTRAIT, initdisplay);
+        oLCD.print("TARGET DIR", 10, 10);
+        oLCD.print(direction, " DEGRESS", 10, 24);
+        oLCD.print("TARGET DIST", 10, 38);
+        oLCD.print(distance, " CM", 10, 52);
+}
 void Option4(char optionstate, char keypressed, bool initdisplay){
-    
+   if (keypressed == 4 && Opt1 == true && Opt3 == true){
+        displayCordinates(direction, distance);
+   } 
 }
 // *************************************************************************************
 // END: USER FUNCTIONS
