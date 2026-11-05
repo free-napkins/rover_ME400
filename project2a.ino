@@ -45,7 +45,7 @@ bool Opt3 = false;
 //  Option1 code
 //
 void Option1(char optionstate, char keypressed, bool initdisplay){
-// set boolean Opt1 to true once this i complete -Gabe
+// set boolean Opt1 to true once this is complete -Gabe
 }
 //
 //  Option2 code
