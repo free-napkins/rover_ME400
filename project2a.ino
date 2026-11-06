@@ -417,7 +417,9 @@ void Option3(char optionstate, char keypressed, bool initdisplay){
     digitalWrite(trigPin, LOW);
     servowrite(panPin, 90, 10);
     servowrite(tiltPin, 90, 10);
-
+    if (optionstate != 'A'){
+        return; //makes so it does not keep looping 
+    }
     int thetaf, df;    //target angle and distance for forward sweep
     int thetar, dr;    //target angle and distance for reverse sweep
     drawRadar(initdisplay);
