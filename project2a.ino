@@ -30,6 +30,13 @@ float WheelDiameter = 6.5;
 // slots per encoder disc
 const int CountsPerRev = 20;
 
+//bools for option completion
+bool opt_1 = false;
+bool opt_3 = false;
+
+//switch intitialization
+const int SW1 = 18;
+
 //  Create an instance of the lcdhelper class named oLCD
 //
 lcdhelper oLCD(ILI9163_4L, 3, 2, 9, 10, 7);
@@ -236,6 +243,7 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
                 }
             }
         }
+        bool opt_1 = true;
     }
 }
 //
@@ -256,86 +264,82 @@ void Option3(char optionstate, char keypressed, bool initdisplay)
 //
 void Option4(char optionstate, char keypressed, bool initdisplay)
 {
-    rerunRequested = false;
-    // Reset Encoder Counts
-    leftEncoderCount = 0;
-    rightEncoderCount = 0;
-
-    // Calculate Ntarget for 14 cm
-    float wheelCircumference = 3.14159 * WheelDiameter;          // get the circumference of the wheel by pi*diameter
-    counttotarget = (14.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 14 cm
-
-    //Initial motor commands (Forward direction)
-    digitalWrite(lphasedir, HIGH);
-    digitalWrite(rphasedir, HIGH);
-
-    float leftPWM = 0.3 * maxDutyCycle / 100.0;
-    float rightDuty = 0.3;
-    float rightPWM = leftPWM;                  // Starts equal to base duty cycle
-    float gainfactor = 0.5;                    // Gain factor (change this if not working properly)
-    float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
-
-    ledcWrite(lpwmChannel, leftPWM);
-    ledcWrite(rpwmChannel, rightPWM);
-
-    unsigned long lastDisplayUpdate = millis();
-
-    // Step 5e-h: Loop until both wheels hit target distance or POWER ('P') pressed
-    while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
+    if (opt_1 == true && opt_3 == true)
     {
 
-        // Check for emergency stop key ('P')
-        IR_KEYS currentKey = oIR.GetKeyPressed();
-        if (oIR.TranslateKey(currentKey) == 'P')
-        {
-            break; // Stop loop immediately
-        }
+        oLCD.LCDInitialize(PORTRAIT, initdisplay);
+        oLCD.print("TARGET DIR", 10, 10);
+        oLCD.print(angle " DEGREES", 10, 24);
+        oLCD.print("TARGET DIST", 10, 38);
+        oLCD.print(distance " CM", 10, 52);
+        oLCD.print("4. NAVIGATE", 10, 66);
 
-        long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
-        adjustedRightDuty = baseDuty + (error * gainfactor);
+        rerunRequested = false;
+        // Reset Encoder Counts
+        leftEncoderCount = 0;
+        rightEncoderCount = 0;
 
-        // Clamp right motor duty cycle between 20% and 80%
-        if (adjustedRightDuty < 20.0)
-            adjustedRightDuty = 20.0;
-        if (adjustedRightDuty > 80.0)
-            adjustedRightDuty = 80.0;
+        // Calculate Ntarget for 14 cm
+        float wheelCircumference = 3.14159 * WheelDiameter;          // get the circumference of the wheel by pi*diameter
+        counttotarget = (14.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 14 cm
 
-        rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
+        //Initial motor commands (Forward direction)
+        digitalWrite(lphasedir, HIGH);
+        digitalWrite(rphasedir, HIGH);
+
+        float leftPWM = 0.3 * maxDutyCycle / 100.0;
+        float rightDuty = 0.3;
+        float rightPWM = leftPWM;                  // Starts equal to base duty cycle
+        float gainfactor = 0.5;                    // Gain factor (change this if not working properly)
+        float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
+
+        ledcWrite(lpwmChannel, leftPWM);
         ledcWrite(rpwmChannel, rightPWM);
 
-        //Update TFT display every 1.0 second
-        if (millis() - lastDisplayUpdate >= 1000)
-        {
-            lastDisplayUpdate = millis();
-            // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
-            updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
-        }
-    }
+        unsigned long lastDisplayUpdate = millis();
 
-    //Stop both motors immediately after reaching target or power key
-    ledcWrite(lpwmChannel, 0);
-    ledcWrite(rpwmChannel, 0);
-
-    // Final TFT display update with final counts and error
-    long finalError = (long)leftEncoderCount - (long)rightEncoderCount;
-    updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, finalError);
-    bool waitingForUserChoice = true;
-    while (waitingForUserChoice) // Going back to menu or rerunning
-    {
-        IR_KEYS keyAfterStop = oIR.GetKeyPressed();
-        char translatedKey = oIR.TranslateKey(keyAfterStop);
-
-        if (keyAfterStop == KEY_MENU || translatedKey == 'M')
+        //Loop until both wheels hit target distance or POWER ('P') pressed
+        while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
         {
-            waitingForUserChoice = false;
-            ShowDisplay(SC_MAIN, ' ', ' '); // Return to main menu
+
+            // Check for emergency stop key ('P')
+            IR_KEYS currentKey = oIR.GetKeyPressed();
+            if (oIR.TranslateKey(currentKey) == 'P')
+            {
+                break; // Stop loop immediately
+            }
+
+            long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
+            adjustedRightDuty = baseDuty + (error * gainfactor);
+
+            // Clamp right motor duty cycle between 20% and 80%
+            if (adjustedRightDuty < 20.0)
+                adjustedRightDuty = 20.0;
+            if (adjustedRightDuty > 80.0)
+                adjustedRightDuty = 80.0;
+
+            rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
+            ledcWrite(rpwmChannel, rightPWM);
+
+            //Update TFT display every 1.0 second
+            if (millis() - lastDisplayUpdate >= 1000)
+            {
+                lastDisplayUpdate = millis();
+                // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
+                updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
+            }
         }
-        else if (keyAfterStop == KEY_RETURN || translatedKey == 'R')
+
+        //Stop both motors immediately after reaching target or power key
+        ledcWrite(lpwmChannel, 0);
+        ledcWrite(rpwmChannel, 0);
+
+        pinMode(SW1, INPUT_PULLUP);
+
+        if (digitalRead(SW1) == LOW)
         {
-            waitingForUserChoice = false;
-            rerunRequested = true; // Repeat 100cm test with same duty cycle
+            
         }
-        delay(50);
     }
 }
 // *************************************************************************************
