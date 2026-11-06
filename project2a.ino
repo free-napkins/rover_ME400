@@ -17,6 +17,19 @@ const int lphasedir = 12;
 volatile unsigned long leftEncoderCount = 0;
 volatile unsigned long rightEncoderCount = 0;
 
+//option 3, servo pin assignments
+const int panPin = 36; 
+const int tiltPin = 35;
+const int trigPin = 38;
+const int echoPin = 37;
+//GLOBAL VARIABLES FOR OPTION 3
+int targetAngle = 0;
+int targetDist = 0;
+bool option4Enabled = false;
+const int maxDist = 120;   //farthest distance that counts as a target
+const int minGroup = 2;    //minimum readings that would count as a target
+
+
 // pwm channels
 const int lpwmChannel = 1;
 const int rpwmChannel = 2;
@@ -256,8 +269,172 @@ void Option2(char optionstate, char keypressed, bool initdisplay)
 //
 //  Option3 code
 //
-void Option3(char optionstate, char keypressed, bool initdisplay)
-{
+float radarRadius(){
+    return ((xScreen - mScreen)/2.0) - 2;
+}
+
+//--OPTION 3-- function to draw circles and gridlines 
+void drawGrid(){
+    float xC = xScreen/2.0;
+    float yC = yScreen;
+    float rMax = radarRadius();
+    oLCD.drawCircle(xC, yC, rMax, RCB_WHITE);
+    oLCD.drawCircle(xC, yC, rMax/2.0, RCB_WHITE);
+    //draw gridlines from the center at 30 degree increments
+    int gridlineAngles[5] = {30, 60, 90, 120, 150};
+    for (int i = 0; i<5; i++){
+        float rad = gridlineAngles[i]*PI/ 180.0;
+        int x1 = xC + rMax*cos(rad); //use trig functions to get gridline coordinates
+        int y1 = yC - rMax*sin(rad);
+        oLCD.drawLine(xC, yC, x1, y1, RCB_WHITE);
+    }
+}
+
+//--OPTION 3-- function to clear screen and draw radar text
+void drawRadar(bool initdisplay){
+    oLCD.LCDInitialize(LANDSCAPE, initdisplay);
+    oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
+    oLCD.print("ANGLE", 15, 5);
+    oLCD.print("DEGREES", 100, 5);
+    oLCD.print("DISTANCE", 15, 20);
+    oLCD.print("CM", 100, 20);
+    //empty black boxes for the readings
+    clearText(60, 5, 35, RCB_BLACK);
+    clearText(80, 20, 18, RCB_BLACK);
+    drawGrid();
+}
+
+//--OPTION 3-- function to update the angle and distance readings
+void updateReadings(int angle, int distance){
+    clearText(60, 5, 35, RCB_BLACK);
+    clearText(80, 20, 18, RCB_BLACK); 
+    oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
+    oLCD.printNumI(angle, 65, 5, 3, ' ');
+    oLCD.printNumI(distance, 81, 20);
+}
+
+//--OPTION 3-- function to measure distance from 0-120cm
+int readDistance(){
+    int d = calculateDistance(trigPin, echoPin);
+    if (d <= 0 || d > maxDist){
+        d = maxDist;
+    }
+    return d;
+}
+
+//--OPTION 3-- function to draw colored rays, blue for open space, red for obstacles
+void drawRay(int angle, int dist){
+    float xC = xScreen/2.0;
+    float yC = yScreen;
+    float rMax = radarRadius() - 1;  
+    float rad = angle*PI / 180.0;
+    float rMeas = (dist/(float)maxDist)*rMax; //make maxDist a float so it's not integer division
+    int xBlue = xC + rMeas*cos(rad); // same logic as drawing the gridlines
+    int yBlue = yC - rMeas*sin(rad);
+    int xRed = xC + rMax*cos(rad);
+    int yRed = yC - rMax*sin(rad);
+    oLCD.drawLine(xC, yC, xBlue, yBlue, RCB_BLUE);
+    if (dist < maxDist){
+        oLCD.drawLine(xBlue, yBlue, xRed, yRed, RCB_RED);
+    }
+}
+
+//--OPTION 3-- function to group readings into targets and keep the closest one
+void findTarget(int dist, int angle, int &minDist, int &sumAngle, int &sumDist, int &count, int &theta, int &d){
+    if (dist < maxDist){
+        //part of a target, add to current group
+        sumAngle += angle;
+        sumDist += dist;
+        count++;
+    } else if (count > 0){
+        //ignore groups too small to be a real target
+        if (count >= minGroup){
+            int avgDist = sumDist/count;
+            if (avgDist < minDist){
+                minDist = avgDist;
+                theta = sumAngle/count;
+                d = avgDist;
+            }
+        }
+        sumAngle = 0;
+        sumDist = 0;
+        count = 0;
+    }
+}
+
+//--OPTION 3-- function to run one sweep and return the closest target
+void sweep(int startAngle, int endAngle, int step, int &theta, int &d){
+    int minDist = 999;
+    int sumAngle = 0;
+    int sumDist = 0;
+    int count = 0;
+    theta = 0;
+    d = 999;
+    //get to the start angle first
+    servowrite(panPin, startAngle, 10);
+    //number of steps between the start and end angles
+    int numSteps = (endAngle - startAngle) / step;
+    for (int n = 0; n <= numSteps; n++){
+        int i = startAngle + n*step;    //current angle
+        servowrite(panPin, i, 3);
+        int dist = readDistance();
+        findTarget(dist, i, minDist, sumAngle, sumDist, count, theta, d);
+        updateReadings(i, dist);
+        drawRay(i, dist);
+        drawGrid();    
+    }
+    findTarget(maxDist, endAngle, minDist, sumAngle, sumDist, count, theta, d);
+}
+
+//--OPTION 3-- function to display target result
+void displayTarget(bool found, int angle, int dist){
+    float xC = xScreen/2.0;
+    float yC = yScreen;
+    int boxWidth = 100;
+    int boxHeight = 55;
+    int x1 = xC - (boxWidth/2);
+    int y1 = (yC/2) - 15;
+    DrawBox(x1, y1, boxWidth, boxHeight, RCB_BLACK);
+    oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
+    if (found){
+        oLCD.print("TARGET", CENTER, y1 + 12);
+        oLCD.printNumI(angle, x1 + 6, y1 + 27, 3, ' ');
+        oLCD.print(" DEGREES", x1 + 30, y1 + 27);
+        oLCD.printNumI(dist, x1 + 26, y1 + 42, 3, ' ');
+        oLCD.print(" CM", x1 + 50, y1 + 42);
+    } else{
+        oLCD.print("TARGET NOT", CENTER, y1 + 20);
+        oLCD.print("FOUND", CENTER, y1 + 35);
+    }
+}
+
+//--OPTION 3 MAIN--
+void Option3(char optionstate, char keypressed, bool initdisplay){
+    pinMode(panPin, OUTPUT);
+    pinMode(tiltPin, OUTPUT);
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+    digitalWrite(trigPin, LOW);
+    servowrite(panPin, 90, 10);
+    servowrite(tiltPin, 90, 10);
+
+    int thetaf, df;    //target angle and distance for forward sweep
+    int thetar, dr;    //target angle and distance for reverse sweep
+    drawRadar(initdisplay);
+    sweep(15, 165, 2, thetaf, df);
+    drawRadar(false);    //clear before the reverse sweep
+    sweep(165, 15, -1, thetar, dr);
+    //take values from both sweeps
+    if (df < maxDist && dr < maxDist){
+        targetAngle = (thetaf + thetar)/2;
+        targetDist = (df + dr)/2;
+        option4Enabled = true;
+        displayTarget(true, targetAngle, targetDist);
+    } else {
+        option4Enabled = false;
+        displayTarget(false, 0, 0);
+    }
+    servowrite(panPin, 90, 10);    //return pan servo to center
 }
 //
 //  Option4 code
@@ -269,12 +446,11 @@ void Option4(char optionstate, char keypressed, bool initdisplay)
 
         oLCD.LCDInitialize(PORTRAIT, initdisplay);
         oLCD.print("TARGET DIR", 10, 10);
-        oLCD.print(angle " DEGREES", 10, 24);
+        oLCD.print(" DEGREES", 10, 24);
         oLCD.print("TARGET DIST", 10, 38);
-        oLCD.print(distance " CM", 10, 52);
+        oLCD.print(" CM", 10, 52);
         oLCD.print("4. NAVIGATE", 10, 66);
 
-        rerunRequested = false;
         // Reset Encoder Counts
         leftEncoderCount = 0;
         rightEncoderCount = 0;
@@ -291,7 +467,7 @@ void Option4(char optionstate, char keypressed, bool initdisplay)
         float rightDuty = 0.3;
         float rightPWM = leftPWM;                  // Starts equal to base duty cycle
         float gainfactor = 0.5;                    // Gain factor (change this if not working properly)
-        float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
+        float adjustedRightDuty = 0.3; // define the adjusted duty cycle
 
         ledcWrite(lpwmChannel, leftPWM);
         ledcWrite(rpwmChannel, rightPWM);
@@ -310,7 +486,7 @@ void Option4(char optionstate, char keypressed, bool initdisplay)
             }
 
             long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
-            adjustedRightDuty = baseDuty + (error * gainfactor);
+            adjustedRightDuty = 0.3 + (error * gainfactor);
 
             // Clamp right motor duty cycle between 20% and 80%
             if (adjustedRightDuty < 20.0)
