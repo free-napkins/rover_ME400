@@ -17,6 +17,19 @@ const int lphasedir = 12;
 volatile unsigned long leftEncoderCount = 0;
 volatile unsigned long rightEncoderCount = 0;
 
+//option 3, servo pin assignments
+const int panPin = 36; 
+const int tiltPin = 35;
+const int trigPin = 38;
+const int echoPin = 37;
+//GLOBAL VARIABLES FOR OPTION 3
+int targetAngle = 0;
+int targetDist = 0;
+bool option4Enabled = false;
+const int maxDist = 120;   //farthest distance that counts as a target
+const int minGroup = 2;    //minimum readings that would count as a target
+
+
 // pwm channels
 const int lpwmChannel = 1;
 const int rpwmChannel = 2;
@@ -57,6 +70,13 @@ const int SETTLE_MS = 200;                  // pause after each move so the robo
 const unsigned long TURN_TIMEOUT_MS = 4000; // give up on a turn that never finishes (e.g. a wheel is stalled)
 const unsigned long MOVE_TIMEOUT_MS = 5000; // give up on a forward move that never finishes
 const float OPT2_GAIN = 0.5;                // straight-line correction gain, same idea as "gainfactor" in Option 1
+
+//bools for option completion
+bool opt_1 = false;
+bool opt_3 = false;
+
+//switch intitialization
+const int SW1 = 18;
 
 //  Create an instance of the lcdhelper class named oLCD
 //
@@ -99,7 +119,12 @@ void RightEncoderISR();
 void updateDriveDisplay(float rightDuty, unsigned long leftCnt, unsigned long rightCnt, long err);
 
 // Functions used in option 2
-// (A prototype tells the compiler a function exists before its code appears later in the file.)
+
+void processKeyInput(char keypressed, String &aval);
+long calculateTargetCounts(float wheelDiameter, int countsPerRev);
+void straightDrive100cm(int baseDuty, long targetCounts);
+void driveStraight(int baseDuty, float targetDistanceCm);
+ (A prototype tells the compiler a function exists before its code appears later in the file.)
 void servowrite(int pin, int angle, int numpulses);                                          // provided: moves a servo to an angle
 int calculateDistance(int tPin, int ePin);                                                   // provided: one ultrasonic reading in cm (0 = no echo)
 void Opt2_SeekTarget();                                                                      // runs the whole Option 2 sequence
@@ -143,43 +168,8 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
     }
     else if (optionstate == 'A' && keypressed != ' ')
     {
-        // Handle Backspaces
-        if (keypressed == 'B')
-        {
-            if (aval.length() > 0)
-            {
-                aval.remove(aval.length() - 1);
-            }
-        }
-        // Validate Numeric Input from 0-9
-        else if (keypressed >= '0' && keypressed <= '9')
-        {
-            if (aval.length() == 0)
-            {
-                // Reject 0, 1, 2, 3, 8, and 9
-                if (keypressed >= '4' && keypressed <= '7')
-                {
-                    aval += keypressed;
-                }
-            }
-            else if (aval.length() == 1)
-            {
-                char firstDigit = aval.charAt(0);
-                if (firstDigit == '7')
-                {
-                    // Limit to 70
-                    if (keypressed == '0')
-                    {
-                        aval += keypressed;
-                    }
-                }
-                else
-                {
-                    // 40-69 allowed
-                    aval += keypressed;
-                }
-            }
-        }
+        // process all remote inputs
+        processKeyInput(keypressed, aval);
 
         // Show current value of aval
         clearText(CENTER, 32, 20, RCB_BLACK);
@@ -199,66 +189,159 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
         if (aval.length() == 2)
         {
             int baseDuty = aval.toInt();
-            bool rerunRequested = true;
+            counttotarget = calculateTargetCounts(WheelDiameter, CountsPerRev);
+            straightDrive100cm(baseDuty, counttotarget);
+        }
+        bool opt_1 = true;
+    }
+}
+//
+//  Option2 code
+//
+void Option2(char optionstate, char keypressed, bool initdisplay)
+{
+    // DO NOT SHARE CODE WITH STUDENTS.  THIS IS A COMPETITION SO LETS SEE WHAT THEY COME UP.
+}
+//
+//  Option3 code
+//
+float radarRadius(){
+    return ((xScreen - mScreen)/2.0) - 2;
+}
 
-            while (rerunRequested)
-            {
-                rerunRequested = false;
-                // Reset Encoder Counts
-                leftEncoderCount = 0;
-                rightEncoderCount = 0;
+//--OPTION 3-- function to draw circles and gridlines 
+void drawGrid(){
+    float xC = xScreen/2.0;
+    float yC = yScreen;
+    float rMax = radarRadius();
+    oLCD.drawCircle(xC, yC, rMax, RCB_WHITE);
+    oLCD.drawCircle(xC, yC, rMax/2.0, RCB_WHITE);
+    //draw gridlines from the center at 30 degree increments
+    int gridlineAngles[5] = {30, 60, 90, 120, 150};
+    for (int i = 0; i<5; i++){
+        float rad = gridlineAngles[i]*PI/ 180.0;
+        int x1 = xC + rMax*cos(rad); //use trig functions to get gridline coordinates
+        int y1 = yC - rMax*sin(rad);
+        oLCD.drawLine(xC, yC, x1, y1, RCB_WHITE);
+    }
+}
 
-                // Calculate Ntarget for 100 cm
-                float wheelCircumference = 3.14159 * WheelDiameter;          // get the circumference of the wheel by pi*diameter
-                counttotarget = (100.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 100 cm
+//--OPTION 3-- function to clear screen and draw radar text
+void drawRadar(bool initdisplay){
+    oLCD.LCDInitialize(LANDSCAPE, initdisplay);
+    oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
+    oLCD.print("ANGLE", 15, 5);
+    oLCD.print("DEGREES", 100, 5);
+    oLCD.print("DISTANCE", 15, 20);
+    oLCD.print("CM", 100, 20);
+    //empty black boxes for the readings
+    clearText(60, 5, 35, RCB_BLACK);
+    clearText(80, 20, 18, RCB_BLACK);
+    drawGrid();
+}
 
-                // Step 5d: Initial motor commands (Forward direction)
-                digitalWrite(lphasedir, HIGH);
-                digitalWrite(rphasedir, HIGH);
+//--OPTION 3-- function to update the angle and distance readings
+void updateReadings(int angle, int distance){
+    clearText(60, 5, 35, RCB_BLACK);
+    clearText(80, 20, 18, RCB_BLACK); 
+    oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
+    oLCD.printNumI(angle, 65, 5, 3, ' ');
+    oLCD.printNumI(distance, 81, 20);
+}
 
-                float leftPWM = (float)baseDuty * maxDutyCycle / 100.0;
-                float rightDuty = baseDuty;
-                float rightPWM = leftPWM;                  // Starts equal to base duty cycle
-                float gainfactor = 0.5;                    // Gain factor (change this if not working properly)
-                float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
+//--OPTION 3-- function to measure distance from 0-120cm
+int readDistance(){
+    int d = calculateDistance(trigPin, echoPin);
+    if (d <= 0 || d > maxDist){
+        d = maxDist;
+    }
+    return d;
+}
 
-                ledcWrite(lpwmChannel, leftPWM);
-                ledcWrite(rpwmChannel, rightPWM);
+//--OPTION 3-- function to draw colored rays, blue for open space, red for obstacles
+void drawRay(int angle, int dist){
+    float xC = xScreen/2.0;
+    float yC = yScreen;
+    float rMax = radarRadius() - 1;  
+    float rad = angle*PI / 180.0;
+    float rMeas = (dist/(float)maxDist)*rMax; //make maxDist a float so it's not integer division
+    int xBlue = xC + rMeas*cos(rad); // same logic as drawing the gridlines
+    int yBlue = yC - rMeas*sin(rad);
+    int xRed = xC + rMax*cos(rad);
+    int yRed = yC - rMax*sin(rad);
+    oLCD.drawLine(xC, yC, xBlue, yBlue, RCB_BLUE);
+    if (dist < maxDist){
+        oLCD.drawLine(xBlue, yBlue, xRed, yRed, RCB_RED);
+    }
+}
 
-                unsigned long lastDisplayUpdate = millis();
+//--OPTION 3-- function to group readings into targets and keep the closest one
+void findTarget(int dist, int angle, int &minDist, int &sumAngle, int &sumDist, int &count, int &theta, int &d){
+    if (dist < maxDist){
+        //part of a target, add to current group
+        sumAngle += angle;
+        sumDist += dist;
+        count++;
+    } else if (count > 0){
+        //ignore groups too small to be a real target
+        if (count >= minGroup){
+            int avgDist = sumDist/count;
+            if (avgDist < minDist){
+                minDist = avgDist;
+                theta = sumAngle/count;
+                d = avgDist;
+            }
+        }
+        sumAngle = 0;
+        sumDist = 0;
+        count = 0;
+    }
+}
 
-                // Step 5e-h: Loop until both wheels hit target distance or POWER ('P') pressed
-                while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
-                {
+//--OPTION 3-- function to run one sweep and return the closest target
+void sweep(int startAngle, int endAngle, int step, int &theta, int &d){
+    int minDist = 999;
+    int sumAngle = 0;
+    int sumDist = 0;
+    int count = 0;
+    theta = 0;
+    d = 999;
+    //get to the start angle first
+    servowrite(panPin, startAngle, 10);
+    //number of steps between the start and end angles
+    int numSteps = (endAngle - startAngle) / step;
+    for (int n = 0; n <= numSteps; n++){
+        int i = startAngle + n*step;    //current angle
+        servowrite(panPin, i, 3);
+        int dist = readDistance();
+        findTarget(dist, i, minDist, sumAngle, sumDist, count, theta, d);
+        updateReadings(i, dist);
+        drawRay(i, dist);
+        drawGrid();    
+    }
+    findTarget(maxDist, endAngle, minDist, sumAngle, sumDist, count, theta, d);
+}
 
-                    // Check for emergency stop key ('P')
-                    IR_KEYS currentKey = oIR.GetKeyPressed();
-                    if (oIR.TranslateKey(currentKey) == 'P')
-                    {
-                        break; // Stop loop immediately
-                    }
-
-                    long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
-                    adjustedRightDuty = baseDuty + (error * gainfactor);
-
-                    // Clamp right motor duty cycle between 20% and 80%
-                    if (adjustedRightDuty < 20.0)
-                        adjustedRightDuty = 20.0;
-                    if (adjustedRightDuty > 80.0)
-                        adjustedRightDuty = 80.0;
-
-                    rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
-                    ledcWrite(rpwmChannel, rightPWM);
-
-                    // Step 5g: Update TFT display every 1.0 second
-                    if (millis() - lastDisplayUpdate >= 1000)
-                    {
-                        lastDisplayUpdate = millis();
-                        // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
-                        updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
-                    }
-                }
-
+//--OPTION 3-- function to display target result
+void displayTarget(bool found, int angle, int dist){
+    float xC = xScreen/2.0;
+    float yC = yScreen;
+    int boxWidth = 100;
+    int boxHeight = 55;
+    int x1 = xC - (boxWidth/2);
+    int y1 = (yC/2) - 15;
+    DrawBox(x1, y1, boxWidth, boxHeight, RCB_BLACK);
+    oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
+    if (found){
+        oLCD.print("TARGET", CENTER, y1 + 12);
+        oLCD.printNumI(angle, x1 + 6, y1 + 27, 3, ' ');
+        oLCD.print(" DEGREES", x1 + 30, y1 + 27);
+        oLCD.printNumI(dist, x1 + 26, y1 + 42, 3, ' ');
+        oLCD.print(" CM", x1 + 50, y1 + 42);
+    } else{
+        oLCD.print("TARGET NOT", CENTER, y1 + 20);
+        oLCD.print("FOUND", CENTER, y1 + 35);
+    }
                 // Step 5h/i: Stop both motors immediately after reaching target or power key
                 ledcWrite(lpwmChannel, 0);
                 ledcWrite(rpwmChannel, 0);
@@ -305,97 +388,121 @@ void Option2(char optionstate, char keypressed, bool initdisplay)
         Opt2_SeekTarget();
     }
 }
-//
-//  Option3 code
-//
-void Option3(char optionstate, char keypressed, bool initdisplay)
-{
+
+//--OPTION 3 MAIN--
+void Option3(char optionstate, char keypressed, bool initdisplay){
+    pinMode(panPin, OUTPUT);
+    pinMode(tiltPin, OUTPUT);
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+    digitalWrite(trigPin, LOW);
+    servowrite(panPin, 90, 10);
+    servowrite(tiltPin, 90, 10);
+    if (optionstate != 'A'){
+        return; //makes so it does not keep looping 
+    }
+    int thetaf, df;    //target angle and distance for forward sweep
+    int thetar, dr;    //target angle and distance for reverse sweep
+    drawRadar(initdisplay);
+    sweep(15, 165, 2, thetaf, df);
+    drawRadar(false);    //clear before the reverse sweep
+    sweep(165, 15, -1, thetar, dr);
+    //take values from both sweeps
+    if (df < maxDist && dr < maxDist){
+        targetAngle = (thetaf + thetar)/2;
+        targetDist = (df + dr)/2;
+        option4Enabled = true;
+        displayTarget(true, targetAngle, targetDist);
+    } else {
+        option4Enabled = false;
+        displayTarget(false, 0, 0);
+    }
+    servowrite(panPin, 90, 10);    //return pan servo to center
 }
 //
 //  Option4 code
 //
+
+void DisplaytargetCords(int angle, int distance)
+{
+    oLCD.LCDInitialize(PORTRAIT, initdisplay);
+    oLCD.print("TARGET DIR", 10, 10);
+    oLCD.print(String(angle) + " DEGREES", 10, 24);
+    oLCD.print("TARGET DIST", 10, 38);
+    oLCD.print(String(distance) + " CM", 10, 52);
+    oLCD.print("4. NAVIGATE", 10, 66);
+}
+
 void Option4(char optionstate, char keypressed, bool initdisplay)
 {
-    rerunRequested = false;
-    // Reset Encoder Counts
-    leftEncoderCount = 0;
-    rightEncoderCount = 0;
-
-    // Calculate Ntarget for 14 cm
-    float wheelCircumference = 3.14159 * WheelDiameter;         // get the circumference of the wheel by pi*diameter
-    counttotarget = (14.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 14 cm
-
-    // Initial motor commands (Forward direction)
-    digitalWrite(lphasedir, HIGH);
-    digitalWrite(rphasedir, HIGH);
-
-    float leftPWM = 0.3 * maxDutyCycle / 100.0;
-    float rightDuty = 0.3;
-    float rightPWM = leftPWM;                  // Starts equal to base duty cycle
-    float gainfactor = 0.5;                    // Gain factor (change this if not working properly)
-    float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
-
-    ledcWrite(lpwmChannel, leftPWM);
-    ledcWrite(rpwmChannel, rightPWM);
-
-    unsigned long lastDisplayUpdate = millis();
-
-    // Step 5e-h: Loop until both wheels hit target distance or POWER ('P') pressed
-    while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
+    if (opt_1 == true && opt_3 == true)
     {
 
-        // Check for emergency stop key ('P')
-        IR_KEYS currentKey = oIR.GetKeyPressed();
-        if (oIR.TranslateKey(currentKey) == 'P')
-        {
-            break; // Stop loop immediately
-        }
+        // Reset Encoder Counts
+        leftEncoderCount = 0;
+        rightEncoderCount = 0;
 
-        long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
-        adjustedRightDuty = baseDuty + (error * gainfactor);
+        // Calculate Ntarget for 14 cm
+        float wheelCircumference = 3.14159 * WheelDiameter;         // get the circumference of the wheel by pi*diameter
+        counttotarget = (14.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 14 cm
 
-        // Clamp right motor duty cycle between 20% and 80%
-        if (adjustedRightDuty < 20.0)
-            adjustedRightDuty = 20.0;
-        if (adjustedRightDuty > 80.0)
-            adjustedRightDuty = 80.0;
+        // Initial motor commands (Forward direction)
+        digitalWrite(lphasedir, HIGH);
+        digitalWrite(rphasedir, HIGH);
 
-        rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
+        float leftPWM = 0.3 * maxDutyCycle / 100.0;
+        float rightDuty = 0.3;
+        float rightPWM = leftPWM;                  // Starts equal to base duty cycle
+        float gainfactor = 0.5;                    // Gain factor (change this if not working properly)
+        float adjustedRightDuty = 0.3; // define the adjusted duty cycle
+
+        ledcWrite(lpwmChannel, leftPWM);
         ledcWrite(rpwmChannel, rightPWM);
 
-        // Update TFT display every 1.0 second
-        if (millis() - lastDisplayUpdate >= 1000)
-        {
-            lastDisplayUpdate = millis();
-            // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
-            updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
-        }
-    }
+        unsigned long lastDisplayUpdate = millis();
 
-    // Stop both motors immediately after reaching target or power key
-    ledcWrite(lpwmChannel, 0);
-    ledcWrite(rpwmChannel, 0);
-
-    // Final TFT display update with final counts and error
-    long finalError = (long)leftEncoderCount - (long)rightEncoderCount;
-    updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, finalError);
-    bool waitingForUserChoice = true;
-    while (waitingForUserChoice) // Going back to menu or rerunning
-    {
-        IR_KEYS keyAfterStop = oIR.GetKeyPressed();
-        char translatedKey = oIR.TranslateKey(keyAfterStop);
-
-        if (keyAfterStop == KEY_MENU || translatedKey == 'M')
+        //Loop until both wheels hit target distance or POWER ('P') pressed
+        while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
         {
-            waitingForUserChoice = false;
-            ShowDisplay(SC_MAIN, ' ', ' '); // Return to main menu
+
+            // Check for emergency stop key ('P')
+            IR_KEYS currentKey = oIR.GetKeyPressed();
+            if (oIR.TranslateKey(currentKey) == 'P')
+            {
+                break; // Stop loop immediately
+            }
+
+            long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
+            adjustedRightDuty = 0.3 + (error * gainfactor);
+
+            // Clamp right motor duty cycle between 20% and 80%
+            if (adjustedRightDuty < 20.0)
+                adjustedRightDuty = 20.0;
+            if (adjustedRightDuty > 80.0)
+                adjustedRightDuty = 80.0;
+
+            rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
+            ledcWrite(rpwmChannel, rightPWM);
+
+            // Update TFT display every 1.0 second
+            if (millis() - lastDisplayUpdate >= 1000)
+            {
+                lastDisplayUpdate = millis();
+                // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
+                updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
+            }
         }
-        else if (keyAfterStop == KEY_RETURN || translatedKey == 'R')
+
+        // Stop both motors immediately after reaching target or power key
+        ledcWrite(lpwmChannel, 0);
+        ledcWrite(rpwmChannel, 0);
+
+        pinMode(SW1, INPUT_PULLUP);
+
+        if (digitalRead(SW1) == LOW)
         {
-            waitingForUserChoice = false;
-            rerunRequested = true; // Repeat 100cm test with same duty cycle
+            
         }
-        delay(50);
     }
 }
 // *************************************************************************************
@@ -717,6 +824,197 @@ void updateDriveDisplay(float rightDuty, unsigned long leftCnt, unsigned long ri
     {
         oLCD.printNumI(err, CENTER, 130, 4, ' ');
     }
+}
+
+void processKeyInput(char keypressed, String &aval)
+{
+    if (keypressed == 'B') // Handle Backspace
+    {
+        if (aval.length() > 0)
+        {
+            aval.remove(aval.length() - 1);
+        }
+    }
+    else if (keypressed >= '0' && keypressed <= '9') // Validate numeric entry
+    {
+        if (aval.length() == 0)
+        {
+            // Reject 0, 1, 2, 3 (Step 4a)
+            if (keypressed >= '4' && keypressed <= '7')
+            {
+                aval += keypressed;
+            }
+        }
+        else if (aval.length() == 1)
+        {
+            char firstDigit = aval.charAt(0);
+            if (firstDigit == '7')
+            {
+                // Max 70 (Step 4b)
+                if (keypressed == '0')
+                {
+                    aval += keypressed;
+                }
+            }
+            else
+            {
+                // 40-69 allowed
+                aval += keypressed;
+            }
+        }
+    }
+}
+
+long calculateTargetCounts(float wheelDiameter, int countsPerRev)
+{
+    float wheelCircumference = 3.14159 * wheelDiameter;
+    return (long)((100.0 / wheelCircumference) * countsPerRev);
+}
+
+void straightDrive100cm(int baseDuty, long targetCounts)
+{
+    bool rerunRequested = true; // Create variable in case of rerunning in option 1
+
+    while (rerunRequested)
+    {
+        rerunRequested = false;
+        // Reset Encoder Counts
+        leftEncoderCount = 0;
+        rightEncoderCount = 0;
+
+        // Calculate Ntarget for 100 cm
+        float wheelCircumference = 3.14159 * WheelDiameter;          // get the circumference of the wheel by pi*diameter
+        counttotarget = (100.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 100 cm
+
+        // Step 5d: Initial motor commands (Forward direction)
+        digitalWrite(lphasedir, HIGH);
+        digitalWrite(rphasedir, HIGH);
+
+        float leftPWM = (float)baseDuty * maxDutyCycle / 100.0;
+        float rightDuty = baseDuty;
+        float rightPWM = leftPWM;                  // Starts equal to base duty cycle
+        float gainfactor = 0.08;                   // Gain factor (change this if not working properly)
+        float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
+
+        ledcWrite(lpwmChannel, leftPWM);
+        ledcWrite(rpwmChannel, rightPWM);
+
+        unsigned long lastDisplayUpdate = millis();
+
+        // Step 5e-h: Loop until both wheels hit target distance or POWER ('P') pressed
+        while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
+        {
+
+            // Check for emergency stop key ('P')
+            IR_KEYS currentKey = oIR.GetKeyPressed();
+            if (oIR.TranslateKey(currentKey) == 'P')
+            {
+                break; // Stop loop immediately
+            }
+
+            long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
+            adjustedRightDuty = baseDuty + (error * gainfactor);
+
+            // Clamp right motor duty cycle between 20% and 80%
+            if (adjustedRightDuty < 20.0)
+                adjustedRightDuty = 20.0;
+            if (adjustedRightDuty > 80.0)
+                adjustedRightDuty = 80.0;
+
+            rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
+            ledcWrite(rpwmChannel, rightPWM);
+
+            // Step 5g: Update TFT display every 1.0 second
+            if (millis() - lastDisplayUpdate >= 1000)
+            {
+                lastDisplayUpdate = millis();
+                // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
+                updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
+            }
+        }
+        // Emergency Stop Motor PWM (Step 5h/i)
+        ledcWrite(lpwmChannel, 0);
+        ledcWrite(rpwmChannel, 0);
+
+        // Final TFT Screen Refresh
+        long finalError = (long)leftEncoderCount - (long)rightEncoderCount;
+        updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, finalError);
+
+        // Post-Run Decision Loop (Step 6)
+        bool waitingForUserChoice = true;
+        while (waitingForUserChoice)
+        {
+            IR_KEYS keyAfterStop = oIR.GetKeyPressed();
+            char translatedKey = oIR.TranslateKey(keyAfterStop);
+
+            if (keyAfterStop == KEY_MENU || translatedKey == 'M')
+            {
+                waitingForUserChoice = false;
+                ShowDisplay(SC_MAIN, ' ', ' '); // Return to main menu
+            }
+            else if (keyAfterStop == KEY_RETURN || translatedKey == 'R')
+            {
+                waitingForUserChoice = false;
+                rerunRequested = true; // Repeat drive test
+            }
+            delay(50);
+        }
+    }
+}
+
+void driveStraight(int baseDuty, float targetDistanceCm)
+{
+    // Reset Encoder Counts
+    leftEncoderCount = 0;
+    rightEncoderCount = 0;
+
+    // Calculate target encoder counts for the specified distance
+    float wheelCircumference = 3.14159 * WheelDiameter;
+    long targetCounts = (long)((targetDistanceCm / wheelCircumference) * CountsPerRev);
+
+    // Set motor direction to forward
+    digitalWrite(lphasedir, HIGH);
+    digitalWrite(rphasedir, HIGH);
+
+    // Initialize PWM duty cycles
+    float leftPWM = (float)baseDuty * maxDutyCycle / 100.0;
+    float adjustedRightDuty = (float)baseDuty;
+    float rightPWM = leftPWM;
+    float gainfactor = 0.08;
+
+    ledcWrite(lpwmChannel, leftPWM);
+    ledcWrite(rpwmChannel, rightPWM);
+
+    // Drive loop: Keep running until target counts are reached or emergency stop ('P') is pressed
+    while ((long)leftEncoderCount < targetCounts || (long)rightEncoderCount < targetCounts)
+    {
+        // Check for emergency stop key ('P')
+        IR_KEYS currentKey = oIR.GetKeyPressed();
+        if (oIR.TranslateKey(currentKey) == 'P')
+        {
+            break; // Stop immediately
+        }
+
+        // Proportional straight-line correction error calculation
+        long error = (long)leftEncoderCount - (long)rightEncoderCount;
+        adjustedRightDuty = baseDuty + (error * gainfactor);
+
+        // Clamp right motor duty cycle between 20% and 80%
+        if (adjustedRightDuty < 20.0)
+            adjustedRightDuty = 20.0;
+        if (adjustedRightDuty > 80.0)
+            adjustedRightDuty = 80.0;
+
+        rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
+        ledcWrite(rpwmChannel, rightPWM);
+
+        // Small delay to prevent CPU thrashing (no screen refreshing overhead)
+        delay(10);
+    }
+
+    // Stop both motors immediately upon reaching target or stopping
+    ledcWrite(lpwmChannel, 0);
+    ledcWrite(rpwmChannel, 0);
 }
 // *************************************************************************************
 // END: OPTION1 SUPPORT
