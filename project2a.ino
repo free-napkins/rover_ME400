@@ -439,17 +439,21 @@ void Option3(char optionstate, char keypressed, bool initdisplay){
 //
 //  Option4 code
 //
+
+void DisplaytargetCords(int angle, int distance)
+{
+    oLCD.LCDInitialize(PORTRAIT, initdisplay);
+    oLCD.print("TARGET DIR", 10, 10);
+    oLCD.print(String(angle) + " DEGREES", 10, 24);
+    oLCD.print("TARGET DIST", 10, 38);
+    oLCD.print(String(distance) + " CM", 10, 52);
+    oLCD.print("4. NAVIGATE", 10, 66);
+}
+
 void Option4(char optionstate, char keypressed, bool initdisplay)
 {
     if (opt_1 == true && opt_3 == true)
     {
-
-        oLCD.LCDInitialize(PORTRAIT, initdisplay);
-        oLCD.print("TARGET DIR", 10, 10);
-        oLCD.print(" DEGREES", 10, 24);
-        oLCD.print("TARGET DIST", 10, 38);
-        oLCD.print(" CM", 10, 52);
-        oLCD.print("4. NAVIGATE", 10, 66);
 
         // Reset Encoder Counts
         leftEncoderCount = 0;
