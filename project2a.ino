@@ -17,18 +17,15 @@ const int lphasedir = 12;
 volatile unsigned long leftEncoderCount = 0;
 volatile unsigned long rightEncoderCount = 0;
 
-//option 3, servo pin assignments
-const int panPin = 36; 
-const int tiltPin = 35;
+// option 3, servo pin assignments
 const int trigPin = 38;
 const int echoPin = 37;
-//GLOBAL VARIABLES FOR OPTION 3
+// GLOBAL VARIABLES FOR OPTION 3
 int targetAngle = 0;
 int targetDist = 0;
 bool option4Enabled = false;
-const int maxDist = 120;   //farthest distance that counts as a target
-const int minGroup = 2;    //minimum readings that would count as a target
-
+const int maxDist = 120; // farthest distance that counts as a target
+const int minGroup = 2;  // minimum readings that would count as a target
 
 // pwm channels
 const int lpwmChannel = 1;
@@ -45,8 +42,6 @@ const int CountsPerRev = 20;
 
 const int tiltServoPin = 35; // signal wire of the TILT servo (output)
 const int panServoPin = 36;  // signal wire of the PAN servo (output); swings the sensor left/right
-const int echoPin = 37;      // sensor ECHO pin (input): stays HIGH while the sound is traveling out and back
-const int trigPin = 38;      // sensor TRIG pin (output): a 10 microsecond pulse here starts one measurement
 
 // ----- Option 2: tuning values (the defaults should be a fine starting point) -----
 // Turning
@@ -71,11 +66,20 @@ const unsigned long TURN_TIMEOUT_MS = 4000; // give up on a turn that never fini
 const unsigned long MOVE_TIMEOUT_MS = 5000; // give up on a forward move that never finishes
 const float OPT2_GAIN = 0.5;                // straight-line correction gain, same idea as "gainfactor" in Option 1
 
-//bools for option completion
+bool option2Abort = false;
+const int SEEK_MIN_ANGLE = 20;          // from handout
+const int SEEK_MAX_ANGLE = 160;         // from handout
+const int MAX_TARGET_DIST_CM = 200;     // from handout
+const int STOP_DISTANCE_CM = 2;         // from handout
+const float TrackWidthCm = 10.0;        // MEASURE wheel center to wheel center
+const int FORWARD_DUTY = 50;            // duty that drove straight in Option 1
+const bool PAN_ABOVE_90_IS_LEFT = true; // flip if the robot turns away from the target
+
+// bools for option completion
 bool opt_1 = false;
 bool opt_3 = false;
 
-//switch intitialization
+// switch intitialization
 const int SW1 = 18;
 
 //  Create an instance of the lcdhelper class named oLCD
@@ -124,7 +128,6 @@ void processKeyInput(char keypressed, String &aval);
 long calculateTargetCounts(float wheelDiameter, int countsPerRev);
 void straightDrive100cm(int baseDuty, long targetCounts);
 void driveStraight(int baseDuty, float targetDistanceCm);
- (A prototype tells the compiler a function exists before its code appears later in the file.)
 void servowrite(int pin, int angle, int numpulses);                                          // provided: moves a servo to an angle
 int calculateDistance(int tPin, int ePin);                                                   // provided: one ultrasonic reading in cm (0 = no echo)
 void Opt2_SeekTarget();                                                                      // runs the whole Option 2 sequence
@@ -192,103 +195,112 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
             counttotarget = calculateTargetCounts(WheelDiameter, CountsPerRev);
             straightDrive100cm(baseDuty, counttotarget);
         }
-        bool opt_1 = true;
     }
 }
 //
-//  Option2 code
-//
-void Option2(char optionstate, char keypressed, bool initdisplay)
-{
-    // DO NOT SHARE CODE WITH STUDENTS.  THIS IS A COMPETITION SO LETS SEE WHAT THEY COME UP.
-}
+
 //
 //  Option3 code
 //
-float radarRadius(){
-    return ((xScreen - mScreen)/2.0) - 2;
+float radarRadius()
+{
+    return ((xScreen - mScreen) / 2.0) - 2;
 }
 
-//--OPTION 3-- function to draw circles and gridlines 
-void drawGrid(){
-    float xC = xScreen/2.0;
+//--OPTION 3-- function to draw circles and gridlines
+void drawGrid()
+{
+    float xC = xScreen / 2.0;
     float yC = yScreen;
     float rMax = radarRadius();
     oLCD.drawCircle(xC, yC, rMax, RCB_WHITE);
-    oLCD.drawCircle(xC, yC, rMax/2.0, RCB_WHITE);
-    //draw gridlines from the center at 30 degree increments
+    oLCD.drawCircle(xC, yC, rMax / 2.0, RCB_WHITE);
+    // draw gridlines from the center at 30 degree increments
     int gridlineAngles[5] = {30, 60, 90, 120, 150};
-    for (int i = 0; i<5; i++){
-        float rad = gridlineAngles[i]*PI/ 180.0;
-        int x1 = xC + rMax*cos(rad); //use trig functions to get gridline coordinates
-        int y1 = yC - rMax*sin(rad);
+    for (int i = 0; i < 5; i++)
+    {
+        float rad = gridlineAngles[i] * PI / 180.0;
+        int x1 = xC + rMax * cos(rad); // use trig functions to get gridline coordinates
+        int y1 = yC - rMax * sin(rad);
         oLCD.drawLine(xC, yC, x1, y1, RCB_WHITE);
     }
 }
 
 //--OPTION 3-- function to clear screen and draw radar text
-void drawRadar(bool initdisplay){
+void drawRadar(bool initdisplay)
+{
     oLCD.LCDInitialize(LANDSCAPE, initdisplay);
     oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
     oLCD.print("ANGLE", 15, 5);
     oLCD.print("DEGREES", 100, 5);
     oLCD.print("DISTANCE", 15, 20);
     oLCD.print("CM", 100, 20);
-    //empty black boxes for the readings
+    // empty black boxes for the readings
     clearText(60, 5, 35, RCB_BLACK);
     clearText(80, 20, 18, RCB_BLACK);
     drawGrid();
 }
 
 //--OPTION 3-- function to update the angle and distance readings
-void updateReadings(int angle, int distance){
+void updateReadings(int angle, int distance)
+{
     clearText(60, 5, 35, RCB_BLACK);
-    clearText(80, 20, 18, RCB_BLACK); 
+    clearText(80, 20, 18, RCB_BLACK);
     oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
     oLCD.printNumI(angle, 65, 5, 3, ' ');
     oLCD.printNumI(distance, 81, 20);
 }
 
 //--OPTION 3-- function to measure distance from 0-120cm
-int readDistance(){
+int readDistance()
+{
     int d = calculateDistance(trigPin, echoPin);
-    if (d <= 0 || d > maxDist){
+    if (d <= 0 || d > maxDist)
+    {
         d = maxDist;
     }
     return d;
 }
 
 //--OPTION 3-- function to draw colored rays, blue for open space, red for obstacles
-void drawRay(int angle, int dist){
-    float xC = xScreen/2.0;
+void drawRay(int angle, int dist)
+{
+    float xC = xScreen / 2.0;
     float yC = yScreen;
-    float rMax = radarRadius() - 1;  
-    float rad = angle*PI / 180.0;
-    float rMeas = (dist/(float)maxDist)*rMax; //make maxDist a float so it's not integer division
-    int xBlue = xC + rMeas*cos(rad); // same logic as drawing the gridlines
-    int yBlue = yC - rMeas*sin(rad);
-    int xRed = xC + rMax*cos(rad);
-    int yRed = yC - rMax*sin(rad);
+    float rMax = radarRadius() - 1;
+    float rad = angle * PI / 180.0;
+    float rMeas = (dist / (float)maxDist) * rMax; // make maxDist a float so it's not integer division
+    int xBlue = xC + rMeas * cos(rad);            // same logic as drawing the gridlines
+    int yBlue = yC - rMeas * sin(rad);
+    int xRed = xC + rMax * cos(rad);
+    int yRed = yC - rMax * sin(rad);
     oLCD.drawLine(xC, yC, xBlue, yBlue, RCB_BLUE);
-    if (dist < maxDist){
+    if (dist < maxDist)
+    {
         oLCD.drawLine(xBlue, yBlue, xRed, yRed, RCB_RED);
     }
 }
 
 //--OPTION 3-- function to group readings into targets and keep the closest one
-void findTarget(int dist, int angle, int &minDist, int &sumAngle, int &sumDist, int &count, int &theta, int &d){
-    if (dist < maxDist){
-        //part of a target, add to current group
+void findTarget(int dist, int angle, int &minDist, int &sumAngle, int &sumDist, int &count, int &theta, int &d)
+{
+    if (dist < maxDist)
+    {
+        // part of a target, add to current group
         sumAngle += angle;
         sumDist += dist;
         count++;
-    } else if (count > 0){
-        //ignore groups too small to be a real target
-        if (count >= minGroup){
-            int avgDist = sumDist/count;
-            if (avgDist < minDist){
+    }
+    else if (count > 0)
+    {
+        // ignore groups too small to be a real target
+        if (count >= minGroup)
+        {
+            int avgDist = sumDist / count;
+            if (avgDist < minDist)
+            {
                 minDist = avgDist;
-                theta = sumAngle/count;
+                theta = sumAngle / count;
                 d = avgDist;
             }
         }
@@ -299,80 +311,55 @@ void findTarget(int dist, int angle, int &minDist, int &sumAngle, int &sumDist, 
 }
 
 //--OPTION 3-- function to run one sweep and return the closest target
-void sweep(int startAngle, int endAngle, int step, int &theta, int &d){
+void sweep(int startAngle, int endAngle, int step, int &theta, int &d)
+{
     int minDist = 999;
     int sumAngle = 0;
     int sumDist = 0;
     int count = 0;
     theta = 0;
     d = 999;
-    //get to the start angle first
-    servowrite(panPin, startAngle, 10);
-    //number of steps between the start and end angles
+    // get to the start angle first
+    servowrite(panServoPin, startAngle, 10);
+    // number of steps between the start and end angles
     int numSteps = (endAngle - startAngle) / step;
-    for (int n = 0; n <= numSteps; n++){
-        int i = startAngle + n*step;    //current angle
-        servowrite(panPin, i, 3);
+    for (int n = 0; n <= numSteps; n++)
+    {
+        int i = startAngle + n * step; // current angle
+        servowrite(panServoPin, i, 3);
         int dist = readDistance();
         findTarget(dist, i, minDist, sumAngle, sumDist, count, theta, d);
         updateReadings(i, dist);
         drawRay(i, dist);
-        drawGrid();    
+        drawGrid();
     }
+    servowrite(panServoPin, endAngle, 10);
     findTarget(maxDist, endAngle, minDist, sumAngle, sumDist, count, theta, d);
 }
 
 //--OPTION 3-- function to display target result
-void displayTarget(bool found, int angle, int dist){
-    float xC = xScreen/2.0;
+void displayTarget(bool found, int angle, int dist)
+{
+    float xC = xScreen / 2.0;
     float yC = yScreen;
     int boxWidth = 100;
     int boxHeight = 55;
-    int x1 = xC - (boxWidth/2);
-    int y1 = (yC/2) - 15;
+    int x1 = xC - (boxWidth / 2);
+    int y1 = (yC / 2) - 15;
     DrawBox(x1, y1, boxWidth, boxHeight, RCB_BLACK);
     oLCD.setTextColor(RCB_WHITE, RCB_BLACK);
-    if (found){
+    if (found)
+    {
         oLCD.print("TARGET", CENTER, y1 + 12);
         oLCD.printNumI(angle, x1 + 6, y1 + 27, 3, ' ');
         oLCD.print(" DEGREES", x1 + 30, y1 + 27);
         oLCD.printNumI(dist, x1 + 26, y1 + 42, 3, ' ');
         oLCD.print(" CM", x1 + 50, y1 + 42);
-    } else{
+    }
+    else
+    {
         oLCD.print("TARGET NOT", CENTER, y1 + 20);
         oLCD.print("FOUND", CENTER, y1 + 35);
-    }
-                // Step 5h/i: Stop both motors immediately after reaching target or power key
-                ledcWrite(lpwmChannel, 0);
-                ledcWrite(rpwmChannel, 0);
-
-                // Final TFT display update with final counts and error
-                long finalError = (long)leftEncoderCount - (long)rightEncoderCount;
-                updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, finalError);
-                if ((long)leftEncoderCount >= counttotarget && (long)rightEncoderCount >= counttotarget)
-                {
-                    option1Complete = true; // unlocks Option 2 (checked in loop() and ShowDisplay())
-                }
-                bool waitingForUserChoice = true;
-                while (waitingForUserChoice) // Going back to menu or rerunning
-                {
-                    IR_KEYS keyAfterStop = oIR.GetKeyPressed();
-                    char translatedKey = oIR.TranslateKey(keyAfterStop);
-
-                    if (keyAfterStop == KEY_MENU || translatedKey == 'M')
-                    {
-                        waitingForUserChoice = false;
-                        ShowDisplay(SC_MAIN, ' ', ' '); // Return to main menu
-                    }
-                    else if (keyAfterStop == KEY_RETURN || translatedKey == 'R')
-                    {
-                        waitingForUserChoice = false;
-                        rerunRequested = true; // Repeat 100cm test with same duty cycle
-                    }
-                    delay(50);
-                }
-            }
-        }
     }
 }
 //
@@ -390,34 +377,38 @@ void Option2(char optionstate, char keypressed, bool initdisplay)
 }
 
 //--OPTION 3 MAIN--
-void Option3(char optionstate, char keypressed, bool initdisplay){
-    pinMode(panPin, OUTPUT);
-    pinMode(tiltPin, OUTPUT);
-    pinMode(trigPin, OUTPUT);
-    pinMode(echoPin, INPUT);
-    digitalWrite(trigPin, LOW);
-    servowrite(panPin, 90, 10);
-    servowrite(tiltPin, 90, 10);
-    if (optionstate != 'A'){
-        return; //makes so it does not keep looping 
+void Option3(char optionstate, char keypressed, bool initdisplay)
+{
+    // Only run when the option is first selected; later key presses on this screen do nothing.
+    // (Pins are already configured in setup().)
+    if (optionstate != 'A')
+    {
+        return; // makes so it does not keep looping
     }
-    int thetaf, df;    //target angle and distance for forward sweep
-    int thetar, dr;    //target angle and distance for reverse sweep
+    digitalWrite(trigPin, LOW);
+    servowrite(tiltServoPin, 15, 10); // 15 degrees = platform level, same as setup()
+    servowrite(panServoPin, 90, 10);
+    int thetaf, df; // target angle and distance for forward sweep
+    int thetar, dr; // target angle and distance for reverse sweep
     drawRadar(initdisplay);
     sweep(15, 165, 2, thetaf, df);
-    drawRadar(false);    //clear before the reverse sweep
+    drawRadar(false); // clear before the reverse sweep
     sweep(165, 15, -1, thetar, dr);
-    //take values from both sweeps
-    if (df < maxDist && dr < maxDist){
-        targetAngle = (thetaf + thetar)/2;
-        targetDist = (df + dr)/2;
+    // take values from both sweeps
+    if (df < maxDist && dr < maxDist)
+    {
+        targetAngle = (thetaf + thetar) / 2;
+        targetDist = (df + dr) / 2;
         option4Enabled = true;
         displayTarget(true, targetAngle, targetDist);
-    } else {
+    }
+    else
+    {
         option4Enabled = false;
         displayTarget(false, 0, 0);
     }
-    servowrite(panPin, 90, 10);    //return pan servo to center
+    servowrite(panServoPin, 90, 10); // return pan servo to center
+    opt_3 = true;
 }
 //
 //  Option4 code
@@ -425,7 +416,7 @@ void Option3(char optionstate, char keypressed, bool initdisplay){
 
 void DisplaytargetCords(int angle, int distance)
 {
-    oLCD.LCDInitialize(PORTRAIT, initdisplay);
+    oLCD.LCDInitialize(LANDSCAPE, false);
     oLCD.print("TARGET DIR", 10, 10);
     oLCD.print(String(angle) + " DEGREES", 10, 24);
     oLCD.print("TARGET DIST", 10, 38);
@@ -435,74 +426,36 @@ void DisplaytargetCords(int angle, int distance)
 
 void Option4(char optionstate, char keypressed, bool initdisplay)
 {
+    pinMode(SW1, INPUT_PULLUP);
+    // Only run when the option is first selected; otherwise every key press on this screen would drive again.
+    if (optionstate != 'A')
+    {
+        return;
+    }
     if (opt_1 == true && opt_3 == true)
     {
 
-        // Reset Encoder Counts
-        leftEncoderCount = 0;
-        rightEncoderCount = 0;
+        DisplaytargetCords(targetAngle, targetDist);
 
-        // Calculate Ntarget for 14 cm
-        float wheelCircumference = 3.14159 * WheelDiameter;         // get the circumference of the wheel by pi*diameter
-        counttotarget = (14.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 14 cm
+        Opt2_RotateInPlace(90, true);
+        delay(100);
+        Opt2_DriveForward(2);
+        delay(100);
+        Opt2_RotateInPlace(90, false);
+        Opt2_DriveForward(10);
 
-        // Initial motor commands (Forward direction)
-        digitalWrite(lphasedir, HIGH);
-        digitalWrite(rphasedir, HIGH);
-
-        float leftPWM = 0.3 * maxDutyCycle / 100.0;
-        float rightDuty = 0.3;
-        float rightPWM = leftPWM;                  // Starts equal to base duty cycle
-        float gainfactor = 0.5;                    // Gain factor (change this if not working properly)
-        float adjustedRightDuty = 0.3; // define the adjusted duty cycle
-
-        ledcWrite(lpwmChannel, leftPWM);
-        ledcWrite(rpwmChannel, rightPWM);
-
-        unsigned long lastDisplayUpdate = millis();
-
-        //Loop until both wheels hit target distance or POWER ('P') pressed
-        while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
+        while (digitalRead(SW1) == HIGH)
         {
-
-            // Check for emergency stop key ('P')
-            IR_KEYS currentKey = oIR.GetKeyPressed();
-            if (oIR.TranslateKey(currentKey) == 'P')
-            {
-                break; // Stop loop immediately
-            }
-
-            long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
-            adjustedRightDuty = 0.3 + (error * gainfactor);
-
-            // Clamp right motor duty cycle between 20% and 80%
-            if (adjustedRightDuty < 20.0)
-                adjustedRightDuty = 20.0;
-            if (adjustedRightDuty > 80.0)
-                adjustedRightDuty = 80.0;
-
-            rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
-            ledcWrite(rpwmChannel, rightPWM);
-
-            // Update TFT display every 1.0 second
-            if (millis() - lastDisplayUpdate >= 1000)
-            {
-                lastDisplayUpdate = millis();
-                // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
-                updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
-            }
+            if (oIR.GetKeyPressed() == KEY_RETURN)
+                return;
+            delay(10);
         }
+        delay(30); // debounce: let the switch contacts settle
 
-        // Stop both motors immediately after reaching target or power key
-        ledcWrite(lpwmChannel, 0);
-        ledcWrite(rpwmChannel, 0);
+        double turnAmount = targetAngle - 90;
 
-        pinMode(SW1, INPUT_PULLUP);
-
-        if (digitalRead(SW1) == LOW)
-        {
-            
-        }
+        bool turnleft = (turnAmount > 0);
+        Opt2_RotateInPlace(abs(turnAmount), turnleft);
     }
 }
 // *************************************************************************************
@@ -582,7 +535,7 @@ void loop()
             {
                 // Option 2 cannot be selected until Option 1 has been completed.
                 // Until then, pressing 2 simply does nothing.
-                if (option1Complete)
+                if (opt_1)
                 {
                     ShowDisplay(SC_SUB2, 'A', ' ', false);
                 }
@@ -670,7 +623,7 @@ void ShowDisplay(screen val, char optionstate, char keypressed, bool initdisplay
         oLCD.print("1. CALIBRATE DRIVE", 10, 24);
         // Show option 2 in red (disabled) until Option 1 has been completed (project handout step 8).
         // RCB_RED is the project's red; the background stays purple like the rest of the menu.
-        if (!option1Complete)
+        if (!opt_1)
             oLCD.setTextColor(RCB_RED, RCB_PURPLE);
         oLCD.print("2. SEEK TARGET", 10, 38);
         // Switch back to white so the lines printed after this one are normal
@@ -939,6 +892,13 @@ void straightDrive100cm(int baseDuty, long targetCounts)
         // Final TFT Screen Refresh
         long finalError = (long)leftEncoderCount - (long)rightEncoderCount;
         updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, finalError);
+
+        // Option 1 counts as complete only if both wheels reached the full 100 cm (not stopped early with POWER).
+        // Set here, before the menu is redrawn below, so option 2 shows as unlocked right away.
+        if ((long)leftEncoderCount >= counttotarget && (long)rightEncoderCount >= counttotarget)
+        {
+            opt_1 = true;
+        }
 
         // Post-Run Decision Loop (Step 6)
         bool waitingForUserChoice = true;
@@ -1337,8 +1297,9 @@ void Opt2_RotateInPlace(float degrees, bool turnLeft)
     unsigned long startMs = millis(); // used for the timeout so a stalled wheel cannot hang the program
     while ((!leftDone || !rightDone) && (millis() - startMs) < TURN_TIMEOUT_MS)
     {
-        if (Opt2_CheckAbort()){
-            break;  
+        if (Opt2_CheckAbort())
+        {
+            break;
         }
         // RETURN pressed: motors are already stopped
         // Stop each wheel as soon as its own encoder reaches the target count
@@ -1452,44 +1413,44 @@ void Opt2_DriveForward(float distanceCm)
 }
 // Here’s what’s left, in the order I’d do it.
 
-//1. Fill in the values in block 1 (the CONFIRM/MEASURE/TUNE lines)
+// 1. Fill in the values in block 1 (the CONFIRM/MEASURE/TUNE lines)
 
-//SEEK_MIN_ANGLE, SEEK_MAX_ANGLE, MAX_TARGET_DIST_CM: the code only sweeps and accepts readings inside this region, so I need your instructor’s actual numbers (check Project1Option2.docx). My 20–160° and 200 cm are placeholders. Too wide and the robot may lock onto a wall or table. Too narrow and it can miss the target.
-//STOP_DISTANCE_CM: I read “within 2 cm” as the sensor reading 2 cm or less. The HC-SR04’s minimum range is about 2 cm, so readings that close are shaky. If the target disappears after the robot was already close (LOST_CLOSE_CM), the code treats that as arrived. Confirm with your instructor that this is what they mean.
-//TrackWidthCm: measure from the center of one wheel to the center of the other. The code uses it to turn “degrees” into how far each wheel must roll. A wrong value isn’t fatal, because the robot re-measures after every turn and corrects. With one encoder count at about 1 cm of wheel travel, each count is a turn of roughly 8°, which is why the ±10° centering tolerance works.
-//FORWARD_DUTY: set it to the duty cycle that drove your robot straight in Option 1.
+// SEEK_MIN_ANGLE, SEEK_MAX_ANGLE, MAX_TARGET_DIST_CM: the code only sweeps and accepts readings inside this region, so I need your instructor’s actual numbers (check Project1Option2.docx). My 20–160° and 200 cm are placeholders. Too wide and the robot may lock onto a wall or table. Too narrow and it can miss the target.
+// STOP_DISTANCE_CM: I read “within 2 cm” as the sensor reading 2 cm or less. The HC-SR04’s minimum range is about 2 cm, so readings that close are shaky. If the target disappears after the robot was already close (LOST_CLOSE_CM), the code treats that as arrived. Confirm with your instructor that this is what they mean.
+// TrackWidthCm: measure from the center of one wheel to the center of the other. The code uses it to turn “degrees” into how far each wheel must roll. A wrong value isn’t fatal, because the robot re-measures after every turn and corrects. With one encoder count at about 1 cm of wheel travel, each count is a turn of roughly 8°, which is why the ±10° centering tolerance works.
+// FORWARD_DUTY: set it to the duty cycle that drove your robot straight in Option 1.
 
-//2. Check the hardware
-//The pan/tilt platform should sit level at the 90° pan position after power-up (handout step 19a). The sensor should be mounted on the top plate facing forward. If the pan servo isn’t centered at 90°, the angle shown on the TFT won’t match the robot’s actual centerline.
+// 2. Check the hardware
+// The pan/tilt platform should sit level at the 90° pan position after power-up (handout step 19a). The sensor should be mounted on the top plate facing forward. If the pan servo isn’t centered at 90°, the angle shown on the TFT won’t match the robot’s actual centerline.
 
-//3. Unlock Option 2 on the robot
-//Run Option 1 for a full 100 cm run. The lock resets every time you unplug the battery, so you’ll repeat this after each power-up. For quick tests you can temporarily set option1Complete = true in block 1, but put it back to false before submitting.
+// 3. Unlock Option 2 on the robot
+// Run Option 1 for a full 100 cm run. The lock resets every time you unplug the battery, so you’ll repeat this after each power-up. For quick tests you can temporarily set opt_1 = true in block 1, but put it back to false before submitting.
 
-//4. Test the directions
+// 4. Test the directions
 
-//Put the target to the robot’s left. If it turns away from it, flip PAN_ABOVE_90_IS_LEFT.
-//Make sure the two wheels spin opposite ways during a turn and the same way in a straight move. I assumed HIGH means forward on both phase pins, as in Option 1.
+// Put the target to the robot’s left. If it turns away from it, flip PAN_ABOVE_90_IS_LEFT.
+// Make sure the two wheels spin opposite ways during a turn and the same way in a straight move. I assumed HIGH means forward on both phase pins, as in Option 1.
 
-//5. Test the full sequence against the handout
+// 5. Test the full sequence against the handout
 
-//The TFT shows “PREPARING TO ACQUIRE TARGET”, then the distance and angle after each measurement.
-//The robot ends within 2 cm by the sensor reading.
-//RETURN mid-move stops the motors and brings back the menu.
-//RETURN after arrival brings back the menu.
+// The TFT shows “PREPARING TO ACQUIRE TARGET”, then the distance and angle after each measurement.
+// The robot ends within 2 cm by the sensor reading.
+// RETURN mid-move stops the motors and brings back the menu.
+// RETURN after arrival brings back the menu.
 
-//6. Tune if needed
+// 6. Tune if needed
 
-//If it’s too slow, increase SCAN_STEP_DEG or shorten PING_GAP_MS.
-//If it overshoots, lower STEP_FRACTION.
-//If turns end early, the 30% turn may be too slow to finish inside TURN_TIMEOUT_MS. Watch for that, since the handout requires 30%.
-// *************************************************************************************
-// END: OPTION2 SUPPORT
-// *************************************************************************************
-// *************************************************************************************
-// START: OPTION3 SUPPORT
-// *************************************************************************************
+// If it’s too slow, increase SCAN_STEP_DEG or shorten PING_GAP_MS.
+// If it overshoots, lower STEP_FRACTION.
+// If turns end early, the 30% turn may be too slow to finish inside TURN_TIMEOUT_MS. Watch for that, since the handout requires 30%.
+//  *************************************************************************************
+//  END: OPTION2 SUPPORT
+//  *************************************************************************************
+//  *************************************************************************************
+//  START: OPTION3 SUPPORT
+//  *************************************************************************************
 //
-//  Option 3: Function to draw a box.
+//   Option 3: Function to draw a box.
 //
 void DrawBox(int x1, int y1, int x2, int y2, uint32_t color)
 {
