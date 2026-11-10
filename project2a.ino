@@ -81,6 +81,7 @@ bool opt_3 = false;
 
 // switch intitialization
 const int SW1 = 18;
+const int SW2 = 19;
 
 //  Create an instance of the lcdhelper class named oLCD
 //
@@ -320,7 +321,7 @@ void sweep(int startAngle, int endAngle, int step, int &theta, int &d)
     theta = 0;
     d = 999;
     // get to the start angle first
-    servowrite(panServoPin, startAngle, 10);
+    servowrite(panServoPin, startAngle, 3);
     // number of steps between the start and end angles
     int numSteps = (endAngle - startAngle) / step;
     for (int n = 0; n <= numSteps; n++)
@@ -333,7 +334,7 @@ void sweep(int startAngle, int endAngle, int step, int &theta, int &d)
         drawRay(i, dist);
         drawGrid();
     }
-    servowrite(panServoPin, endAngle, 10);
+    servowrite(panServoPin, endAngle, 3);
     findTarget(maxDist, endAngle, minDist, sumAngle, sumDist, count, theta, d);
 }
 
@@ -386,14 +387,14 @@ void Option3(char optionstate, char keypressed, bool initdisplay)
         return; // makes so it does not keep looping
     }
     digitalWrite(trigPin, LOW);
-    servowrite(tiltServoPin, 15, 10); // 15 degrees = platform level, same as setup()
-    servowrite(panServoPin, 90, 10);
+    servowrite(tiltServoPin, 15, 3); // 15 degrees = platform level, same as setup()
+    servowrite(panServoPin, 90, 3);
     int thetaf, df; // target angle and distance for forward sweep
     int thetar, dr; // target angle and distance for reverse sweep
     drawRadar(initdisplay);
     sweep(15, 165, 2, thetaf, df);
     drawRadar(false); // clear before the reverse sweep
-    sweep(165, 15, -1, thetar, dr);
+    sweep(165, 15, -2, thetar, dr);
     // take values from both sweeps
     if (df < maxDist && dr < maxDist)
     {
@@ -414,47 +415,76 @@ void Option3(char optionstate, char keypressed, bool initdisplay)
 //  Option4 code
 //
 
-void DisplaytargetCords(int angle, int distance)
+// Option 4 Step 4 
+void DisplaytargetCords(int angle, int distance, double facing, bool step8)
 {
-    oLCD.LCDInitialize(LANDSCAPE, false);
-    oLCD.print("TARGET DIR", 10, 10);
-    oLCD.print(String(angle) + " DEGREES", 10, 24);
-    oLCD.print("TARGET DIST", 10, 38);
-    oLCD.print(String(distance) + " CM", 10, 52);
-    oLCD.print("4. NAVIGATE", 10, 66);
+    if (step8 == false)
+    {
+        oLCD.LCDInitialize(LANDSCAPE, false);
+        oLCD.print("TARGET DIR", 10, 10);
+        oLCD.print(String(angle) + " DEGREES", 10, 24);
+        oLCD.print("TARGET DIST", 10, 38);
+        oLCD.print(String(distance) + " CM", 10, 52);
+        oLCD.print("4. NAVIGATE", 10, 66);
+    }
+    else if (step8 == true)
+    {
+        oLCD.LCDInitialize(LANDSCAPE, false);
+        oLCD.print("TARGET DIR", 10, 10);
+        oLCD.print(String(angle) + " DEGREES", 10, 24);
+        oLCD.print("TARGET DIST", 10, 38);
+        oLCD.print(String(distance) + " CM", 10, 52);
+        oLCD.print("4. NAVIGATE", 10, 66);
+        oLCD.print("CURRENT DIR" , 10, 80);
+        oLCD.print(String(facing) + "DEGREES", 10, 94);
+    }
+}
+
+//Option 4 Step 6
+void movetoSensor (int rotation, int sideDist, int forwardDist)
+{
+    Opt2_RotateInPlace(rotation, true);
+    delay(100);
+    Opt2_DriveForward(sideDist);
+    delay(100);
+    Opt2_RotateInPlace(rotation, false);
+    Opt2_DriveForward(forwardDist);
 }
 
 void Option4(char optionstate, char keypressed, bool initdisplay)
-{
+{   
+    //set up switch one
     pinMode(SW1, INPUT_PULLUP);
-    // Only run when the option is first selected; otherwise every key press on this screen would drive again.
+
     if (optionstate != 'A')
     {
         return;
     }
+    // step 1
     if (opt_1 == true && opt_3 == true)
     {
+        //calculate turning and left or right turn
+        double turnAmount = targetAngle - 90;
+        bool turnleft = (turnAmount > 0);
 
-        DisplaytargetCords(targetAngle, targetDist);
+        //step 4
+        DisplaytargetCords(targetAngle, targetDist, 0, false);
 
-        Opt2_RotateInPlace(90, true);
-        delay(100);
-        Opt2_DriveForward(2);
-        delay(100);
-        Opt2_RotateInPlace(90, false);
-        Opt2_DriveForward(10);
+        //step 6
+        movetoSensor (90, 2, 10);
 
+        //step 9
+        DisplaytargetCords(targetAngle, targetDist, turnAmount, true);
+
+        //step 10
         while (digitalRead(SW1) == HIGH)
         {
             if (oIR.GetKeyPressed() == KEY_RETURN)
                 return;
             delay(10);
         }
-        delay(30); // debounce: let the switch contacts settle
+        delay(30);
 
-        double turnAmount = targetAngle - 90;
-
-        bool turnleft = (turnAmount > 0);
         Opt2_RotateInPlace(abs(turnAmount), turnleft);
     }
 }
