@@ -129,7 +129,7 @@ void updateDriveDisplay(float rightDuty, unsigned long leftCnt, unsigned long ri
 void processKeyInput(char keypressed, String &aval);
 long calculateTargetCounts(float Distance, float wheelDiameter, int countsPerRev);
 void straightDrive100cm(int baseDuty, long targetCounts);
-void driveStraight(int baseDuty, float targetDistanceCm);
+void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1 );
 void servowrite(int pin, int angle, int numpulses);                                          // provided: moves a servo to an angle
 int calculateDistance(int tPin, int ePin);                                                   // provided: one ultrasonic reading in cm (0 = no echo)
 void Opt2_SeekTarget();                                                                      // runs the whole Option 2 sequence
@@ -197,7 +197,7 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
         {
             baseDuty = aval.toInt();
             counttotarget = calculateTargetCounts(100, WheelDiameter, CountsPerRev);
-            straightDrive100cm(baseDuty, counttotarget);
+            driveStraight(baseDuty, 100.0, true);
         }
     }
 }
@@ -448,10 +448,10 @@ void movetoSensor (int rotation, int sideDist, int forwardDist)
 {
     Opt2_RotateInPlace(rotation, true);
     delay(100);
-    driveStraight(30, sideDist);
+    driveStraight(30, sideDist, false);
     delay(100);
     Opt2_RotateInPlace(rotation, false);
-    driveStraight(30, forwardDist);
+    driveStraight(30, forwardDist, false);
 }
 
 void Option4(char optionstate, char keypressed, bool initdisplay)
@@ -501,7 +501,7 @@ void Option4(char optionstate, char keypressed, bool initdisplay)
         
 
         
-        driveStraight(baseDuty, float(targetDist));
+        driveStraight(baseDuty, float(targetDist), false);
     }
 }
 // *************************************************************************************
@@ -968,59 +968,127 @@ void straightDrive100cm(int baseDuty, long targetCounts)
     }
 }
 
-void driveStraight(int baseDuty, float targetDistanceCm)
+void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
 {
-    // Reset Encoder Counts
-    leftEncoderCount = 0;
-    rightEncoderCount = 0;
+    float adjustedRightDuty = baseDuty;
+    bool rerunRequested = true; // Create variable in case of rerunning in option 1
+    bool stoppedEarly = false;
 
-    // Calculate target encoder counts for the specified distance
-    float wheelCircumference = 3.14159 * WheelDiameter;
-    long targetCounts = (long)((targetDistanceCm / wheelCircumference) * CountsPerRev);
-
-    // Set motor direction to forward
-    digitalWrite(lphasedir, HIGH);
-    digitalWrite(rphasedir, HIGH);
-
-    // Initialize PWM duty cycles
-    float leftPWM = (float)baseDuty * maxDutyCycle / 100.0;
-    float adjustedRightDuty = (float)baseDuty;
-    float rightPWM = leftPWM;
-    float gainfactor = 0.08;
-
-    ledcWrite(lpwmChannel, leftPWM);
-    ledcWrite(rpwmChannel, rightPWM);
-
-    // Drive loop: Keep running until target counts are reached or emergency stop ('P') is pressed
-    while ((long)leftEncoderCount < targetCounts || (long)rightEncoderCount < targetCounts)
+    while (rerunRequested)
     {
-        // Check for emergency stop key ('P')
-        IR_KEYS currentKey = oIR.GetKeyPressed();
-        if (oIR.TranslateKey(currentKey) == 'P')
-        {
-            break; // Stop immediately
-        }
+        rerunRequested = false;
+        // Reset Encoder Counts
+        leftEncoderCount = 0;
+        rightEncoderCount = 0;
 
-        // Proportional straight-line correction error calculation
-        long error = (long)leftEncoderCount - (long)rightEncoderCount;
-        adjustedRightDuty = baseDuty + (error * gainfactor);
+        // Calculate target encoder counts for the specified distance
+        float wheelCircumference = 3.14159 * WheelDiameter;
+        long targetCounts = (long)((targetDistanceCm / wheelCircumference) * CountsPerRev);
 
-        // Clamp right motor duty cycle between 20% and 80%
-        if (adjustedRightDuty < 20.0)
-            adjustedRightDuty = 20.0;
-        if (adjustedRightDuty > 80.0)
-            adjustedRightDuty = 80.0;
+        // Set motor direction to forward
+        digitalWrite(lphasedir, HIGH);
+        digitalWrite(rphasedir, HIGH);
 
-        rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
+        float gainFactor = 0.08;
+
+        int leftPWM = (int)(baseDuty * maxDutyCycle / 100.0);
+        int rightPWM = leftPWM; 
+
+        ledcWrite(lpwmChannel, leftPWM);
         ledcWrite(rpwmChannel, rightPWM);
 
-        // Small delay to prevent CPU thrashing (no screen refreshing overhead)
-        delay(10);
-    }
+        long leftSnap = 0;
+        long rightSnap = 0;
+        long avgCounts = 0;
 
-    // Stop both motors immediately upon reaching target or stopping
-    ledcWrite(lpwmChannel, 0);
-    ledcWrite(rpwmChannel, 0);
+        unsigned long lastDisplayUpdate = millis();
+
+        while (avgCounts < targetCounts)
+        {
+            // Check for emergency stop key ('P')
+            IR_KEYS currentKey = oIR.GetKeyPressed();
+            if (oIR.TranslateKey(currentKey) == 'P')
+            {
+                stoppedEarly = true;
+                break;
+            }
+
+            if(!stoppedEarly)
+            {
+                opt_1 = true;
+            }
+
+            leftSnap = leftEncoderCount;
+            rightSnap = rightEncoderCount;
+            avgCounts = (leftSnap + rightSnap) / 2;
+
+            // calculate error
+            long error = leftSnap - rightSnap;
+            adjustedRightDuty = (float)baseDuty + (error * gainFactor);
+
+            if (adjustedRightDuty < 20.0)
+            {
+                adjustedRightDuty = 20.0;
+            }
+            else if (adjustedRightDuty > 80.0)
+            {
+                adjustedRightDuty = 80.0;
+            }
+
+            rightPWM = (int)(adjustedRightDuty * maxDutyCycle / 100.0);
+            ledcWrite(rpwmChannel, rightPWM);
+
+            delay(10);
+
+            if (isOption1 == true)
+            {
+                // Step 5g: Update TFT display every 1.0 second
+                if (millis() - lastDisplayUpdate >= 1000)
+                {
+                    lastDisplayUpdate = millis();
+                    // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
+                    updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
+                }
+            }
+        }
+
+        ledcWrite(lpwmChannel, 0);
+        ledcWrite(rpwmChannel, 0);
+
+        if (isOption1 == true)
+        {
+            // Final TFT Screen Refresh
+            long finalError = (long)leftEncoderCount - (long)rightEncoderCount;
+            updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, finalError);
+
+            // Option 1 counts as complete only if both wheels reached the full 100 cm (not stopped early with POWER).
+            // Set here, before the menu is redrawn below, so option 2 shows as unlocked right away.
+            if ((long)leftEncoderCount >= targetCounts && (long)rightEncoderCount >= targetCounts)
+            {
+                opt_1 = true;
+            }
+
+            // Post-Run Decision Loop (Step 6)
+            bool waitingForUserChoice = true;
+            while (waitingForUserChoice)
+            {
+                IR_KEYS keyAfterStop = oIR.GetKeyPressed();
+                char translatedKey = oIR.TranslateKey(keyAfterStop);
+
+                if (keyAfterStop == KEY_MENU || translatedKey == 'M')
+                {
+                    waitingForUserChoice = false;
+                    ShowDisplay(SC_MAIN, ' ', ' '); // Return to main menu
+                }
+                else if (keyAfterStop == KEY_RETURN || translatedKey == 'R')
+                {
+                    waitingForUserChoice = false;
+                    rerunRequested = true; // Repeat drive test
+                }
+                delay(50);
+            }
+        }
+    }
 }
 // *************************************************************************************
 // END: OPTION1 SUPPORT
