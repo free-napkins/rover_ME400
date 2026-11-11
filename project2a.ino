@@ -38,7 +38,7 @@ long counttotarget = 0; // create global variable to be used in option 1
 // wheel diamter in cm
 float WheelDiameter = 6.5;
 // slots per encoder disc
-const int CountsPerRev = 20;
+const int CountsPerRev = 40;
 
 const int tiltServoPin = 35; // signal wire of the TILT servo (output)
 const int panServoPin = 36;  // signal wire of the PAN servo (output); swings the sensor left/right
@@ -64,14 +64,14 @@ const int LOST_CLOSE_CM = 8;                // if the target disappears after be
 const int SETTLE_MS = 200;                  // pause after each move so the robot stops rocking before the next measurement
 const unsigned long TURN_TIMEOUT_MS = 4000; // give up on a turn that never finishes (e.g. a wheel is stalled)
 const unsigned long MOVE_TIMEOUT_MS = 5000; // give up on a forward move that never finishes
-const float OPT2_GAIN = 0.5;                // straight-line correction gain, same idea as "gainfactor" in Option 1
+const float OPT2_GAIN = 0.25;                // straight-line correction gain, same idea as "gainfactor" in Option 1
 
 bool option2Abort = false;
 const int SEEK_MIN_ANGLE = 20;          // from handout
 const int SEEK_MAX_ANGLE = 160;         // from handout
 const int MAX_TARGET_DIST_CM = 200;     // from handout
 const int STOP_DISTANCE_CM = 2;         // from handout
-const float TrackWidthCm = 10.0;        // MEASURE wheel center to wheel center
+const float TrackWidthCm = 14;        // MEASURE wheel center to wheel center
 const int FORWARD_DUTY = 50;            // duty that drove straight in Option 1
 const bool PAN_ABOVE_90_IS_LEFT = true; // flip if the robot turns away from the target
 
@@ -520,8 +520,8 @@ void setup()
     // configure encoder interrupt pins
     pinMode(lencoder, INPUT_PULLDOWN);
     pinMode(rencoder, INPUT_PULLDOWN);
-    attachInterrupt(digitalPinToInterrupt(lencoder), LeftEncoderISR, RISING);
-    attachInterrupt(digitalPinToInterrupt(rencoder), RightEncoderISR, RISING);
+    attachInterrupt(digitalPinToInterrupt(lencoder), LeftEncoderISR, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(rencoder), RightEncoderISR, CHANGE);
 
     // Configure Motor Phase Direction Pins
     pinMode(lphasedir, OUTPUT);
@@ -788,6 +788,10 @@ void DisplayRotatedText(int x, int y)
 // *************************************************************************************
 // START: OPTION1 SUPPORT
 // *************************************************************************************
+const unsigned long dtime = 2000;
+volatile unsigned long lastLeftTime = 0;
+volatile unsigned long lastRightTime = 0;
+
 void LeftEncoderISR()
 {
     leftEncoderCount++;
@@ -892,7 +896,7 @@ void straightDrive100cm(int baseDuty, long targetCounts)
         float leftPWM = (float)baseDuty * maxDutyCycle / 100.0;
         float rightDuty = baseDuty;
         float rightPWM = leftPWM;                  // Starts equal to base duty cycle
-        float gainfactor = 0.08;                   // Gain factor (change this if not working properly)
+        float gainfactor = 0.04;                   // Gain factor (change this if not working properly)
         float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
 
         ledcWrite(lpwmChannel, leftPWM);
@@ -989,7 +993,7 @@ void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
         digitalWrite(lphasedir, HIGH);
         digitalWrite(rphasedir, HIGH);
 
-        float gainFactor = 0.08;
+        float gainFactor = 0.04;
 
         int leftPWM = (int)(baseDuty * maxDutyCycle / 100.0);
         int rightPWM = leftPWM; 
