@@ -81,8 +81,9 @@ bool opt_3 = false;
 
 // switch intitialization
 const int SW1 = 18;
-const int SW2 = 19;
+const int SW2 = 17;
 
+int baseDuty = 0;
 //  Create an instance of the lcdhelper class named oLCD
 //
 lcdhelper oLCD(ILI9163_4L, 3, 2, 9, 10, 7);
@@ -126,7 +127,7 @@ void updateDriveDisplay(float rightDuty, unsigned long leftCnt, unsigned long ri
 // Functions used in option 2
 
 void processKeyInput(char keypressed, String &aval);
-long calculateTargetCounts(float wheelDiameter, int countsPerRev);
+long calculateTargetCounts(float Distance, float wheelDiameter, int countsPerRev);
 void straightDrive100cm(int baseDuty, long targetCounts);
 void driveStraight(int baseDuty, float targetDistanceCm);
 void servowrite(int pin, int angle, int numpulses);                                          // provided: moves a servo to an angle
@@ -150,6 +151,8 @@ void Opt2_WaitForReturn();                                                      
 //
 //  Option1 code
 //
+
+
 void Option1(char optionstate, char keypressed, bool initdisplay)
 {
     char text[20];
@@ -192,8 +195,8 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
     {
         if (aval.length() == 2)
         {
-            int baseDuty = aval.toInt();
-            counttotarget = calculateTargetCounts(WheelDiameter, CountsPerRev);
+            baseDuty = aval.toInt();
+            counttotarget = calculateTargetCounts(100, WheelDiameter, CountsPerRev);
             straightDrive100cm(baseDuty, counttotarget);
         }
     }
@@ -445,16 +448,17 @@ void movetoSensor (int rotation, int sideDist, int forwardDist)
 {
     Opt2_RotateInPlace(rotation, true);
     delay(100);
-    Opt2_DriveForward(sideDist);
+    driveStraight(30, sideDist);
     delay(100);
     Opt2_RotateInPlace(rotation, false);
-    Opt2_DriveForward(forwardDist);
+    driveStraight(30, forwardDist);
 }
 
 void Option4(char optionstate, char keypressed, bool initdisplay)
 {   
     //set up switch one
     pinMode(SW1, INPUT_PULLUP);
+    pinMode(SW2, INPUT_PULLUP);
 
     if (optionstate != 'A')
     {
@@ -476,7 +480,7 @@ void Option4(char optionstate, char keypressed, bool initdisplay)
         //step 9
         DisplaytargetCords(targetAngle, targetDist, turnAmount, true);
 
-        //step 10
+        //step 7
         while (digitalRead(SW1) == HIGH)
         {
             if (oIR.GetKeyPressed() == KEY_RETURN)
@@ -486,6 +490,18 @@ void Option4(char optionstate, char keypressed, bool initdisplay)
         delay(30);
 
         Opt2_RotateInPlace(abs(turnAmount), turnleft);
+
+        //step 10
+        while (digitalRead(SW2) == HIGH)
+        {
+            if (oIR.GetKeyPressed() == KEY_RETURN)
+                return;
+            delay(10);
+        }
+        
+
+        
+        driveStraight(baseDuty, float(targetDist));
     }
 }
 // *************************************************************************************
@@ -848,10 +864,10 @@ void processKeyInput(char keypressed, String &aval)
     }
 }
 
-long calculateTargetCounts(float wheelDiameter, int countsPerRev)
+long calculateTargetCounts(float Distance, float wheelDiameter, int countsPerRev)
 {
     float wheelCircumference = 3.14159 * wheelDiameter;
-    return (long)((100.0 / wheelCircumference) * countsPerRev);
+    return (long)((Distance / wheelCircumference) * countsPerRev);
 }
 
 void straightDrive100cm(int baseDuty, long targetCounts)
