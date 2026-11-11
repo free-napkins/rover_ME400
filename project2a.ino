@@ -62,7 +62,7 @@ const float MIN_STEP_CM = 1.0;              // smallest forward move (one encode
 const float MAX_STEP_CM = 30.0;             // largest forward move
 const int LOST_CLOSE_CM = 8;                // if the target disappears after being this close, it is too close to read: treat as arrived
 const int SETTLE_MS = 200;                  // pause after each move so the robot stops rocking before the next measurement
-const unsigned long TURN_TIMEOUT_MS = 4000; // give up on a turn that never finishes (e.g. a wheel is stalled)
+const unsigned long TURN_TIMEOUT_MS = 6000; // give up on a turn that never finishes (e.g. a wheel is stalled)
 const unsigned long MOVE_TIMEOUT_MS = 5000; // give up on a forward move that never finishes
 const float OPT2_GAIN = 0.25;                // straight-line correction gain, same idea as "gainfactor" in Option 1
 
@@ -71,8 +71,7 @@ const int SEEK_MIN_ANGLE = 20;          // from handout
 const int SEEK_MAX_ANGLE = 160;         // from handout
 const int MAX_TARGET_DIST_CM = 200;     // from handout
 const int STOP_DISTANCE_CM = 2;         // from handout
-const float TrackWidthCm = 14;        // MEASURE wheel center to wheel center
-const int FORWARD_DUTY = 50;            // duty that drove straight in Option 1
+const float TrackWidthCm = 11.43;        // MEASURE wheel center to wheel center
 const bool PAN_ABOVE_90_IS_LEFT = true; // flip if the robot turns away from the target
 
 // bools for option completion
@@ -1389,7 +1388,6 @@ void Opt2_DriveForward(float distanceCm)
     digitalWrite(rphasedir, HIGH);
 
     // Start both motors at the same duty cycle
-    float baseDuty = (float)FORWARD_DUTY;
     ledcWrite(lpwmChannel, Opt2_DutyToPWM(baseDuty));
     ledcWrite(rpwmChannel, Opt2_DutyToPWM(baseDuty));
 
@@ -1429,35 +1427,10 @@ void Opt2_DriveForward(float distanceCm)
     }
     Opt2_StopMotors();
 }
-// Here’s what’s left, in the order I’d do it.
 
-// 1. Fill in the values in block 1 (the CONFIRM/MEASURE/TUNE lines)
-
-// SEEK_MIN_ANGLE, SEEK_MAX_ANGLE, MAX_TARGET_DIST_CM: the code only sweeps and accepts readings inside this region, so I need your instructor’s actual numbers (check Project1Option2.docx). My 20–160° and 200 cm are placeholders. Too wide and the robot may lock onto a wall or table. Too narrow and it can miss the target.
-// STOP_DISTANCE_CM: I read “within 2 cm” as the sensor reading 2 cm or less. The HC-SR04’s minimum range is about 2 cm, so readings that close are shaky. If the target disappears after the robot was already close (LOST_CLOSE_CM), the code treats that as arrived. Confirm with your instructor that this is what they mean.
-// TrackWidthCm: measure from the center of one wheel to the center of the other. The code uses it to turn “degrees” into how far each wheel must roll. A wrong value isn’t fatal, because the robot re-measures after every turn and corrects. With one encoder count at about 1 cm of wheel travel, each count is a turn of roughly 8°, which is why the ±10° centering tolerance works.
-// FORWARD_DUTY: set it to the duty cycle that drove your robot straight in Option 1.
-
-// 2. Check the hardware
-// The pan/tilt platform should sit level at the 90° pan position after power-up (handout step 19a). The sensor should be mounted on the top plate facing forward. If the pan servo isn’t centered at 90°, the angle shown on the TFT won’t match the robot’s actual centerline.
-
-// 3. Unlock Option 2 on the robot
-// Run Option 1 for a full 100 cm run. The lock resets every time you unplug the battery, so you’ll repeat this after each power-up. For quick tests you can temporarily set opt_1 = true in block 1, but put it back to false before submitting.
-
-// 4. Test the directions
 
 // Put the target to the robot’s left. If it turns away from it, flip PAN_ABOVE_90_IS_LEFT.
 // Make sure the two wheels spin opposite ways during a turn and the same way in a straight move. I assumed HIGH means forward on both phase pins, as in Option 1.
-
-// 5. Test the full sequence against the handout
-
-// The TFT shows “PREPARING TO ACQUIRE TARGET”, then the distance and angle after each measurement.
-// The robot ends within 2 cm by the sensor reading.
-// RETURN mid-move stops the motors and brings back the menu.
-// RETURN after arrival brings back the menu.
-
-// 6. Tune if needed
-
 // If it’s too slow, increase SCAN_STEP_DEG or shorten PING_GAP_MS.
 // If it overshoots, lower STEP_FRACTION.
 // If turns end early, the 30% turn may be too slow to finish inside TURN_TIMEOUT_MS. Watch for that, since the handout requires 30%.
