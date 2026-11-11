@@ -48,7 +48,7 @@ const int panServoPin = 36;  // signal wire of the PAN servo (output); swings th
 const int TURN_DUTY = 30;            // in-place turns must use a 30% duty cycle (handout step 7)
 const int CENTER_TOLERANCE_DEG = 10; // target counts as "centered" within 90 +/- this (handout step 6)
 // Scanning
-const int SCAN_STEP_DEG = 5;          // how far the pan servo moves between readings (deg); smaller = finer but slower
+const int SCAN_STEP_DEG = 3;          // how far the pan servo moves between readings (deg); smaller = finer but slower
 const int NARROW_HALF_WIDTH_DEG = 30; // after the first full sweep, only scan 90 +/- this (faster re-measuring)
 const int MAX_SCAN_POINTS = 181;      // size of the array that holds one sweep (enough for 1-degree steps over 0-180)
 const int MIN_VALID_CM = 1;           // readings below this are ignored (0 means "no echo")
@@ -72,7 +72,7 @@ const int SEEK_MAX_ANGLE = 160;         // from handout
 const int MAX_TARGET_DIST_CM = 200;     // from handout
 const int STOP_DISTANCE_CM = 2;         // from handout
 const float TrackWidthCm = 11.43;        // MEASURE wheel center to wheel center
-const bool PAN_ABOVE_90_IS_LEFT = false; // flip if the robot turns away from the target
+const bool PAN_ABOVE_90_IS_LEFT = true; // flip if the robot turns away from the target
 
 // bools for option completion
 bool opt_1 = false;
@@ -194,7 +194,7 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
         {
             baseDuty = aval.toInt();
             counttotarget = calculateTargetCounts(100, WheelDiameter, CountsPerRev);
-            driveStraight(baseDuty, 100.0, true);
+            driveStraight(baseDuty, 125.0, true); // 125 input to offeset for friction and testing results
         }
     }
 }
@@ -1301,8 +1301,8 @@ void Opt2_RotateInPlace(float degrees, bool turnLeft)
 
     // Set the directions BEFORE enabling the motors.  HIGH = forward on each phase pin (same as Option 1).
     // Turning left: left wheel backward, right wheel forward.  Turning right: the opposite.
-    digitalWrite(lphasedir, turnLeft ? LOW : HIGH);
-    digitalWrite(rphasedir, turnLeft ? HIGH : LOW);
+    digitalWrite(lphasedir, turnLeft ? HIGH : LOW);
+    digitalWrite(rphasedir, turnLeft ? LOW : HIGH);
 
     // Turn both motors on at 30%
     int pwm = Opt2_DutyToPWM(TURN_DUTY);
@@ -1345,7 +1345,7 @@ void Opt2_TurnTowardTarget(int targetAngleDeg)
 {
     int offsetDeg = targetAngleDeg - 90; // how far from straight ahead; the sign says which side
     // If pan angles above 90 look left (PAN_ABOVE_90_IS_LEFT), a positive offset means "turn left".
-    bool targetIsLeft = ((offsetDeg > 0) == PAN_ABOVE_90_IS_LEFT);
+    bool targetIsLeft = ((offsetDeg > 0) == false);
     // The size of the turn is the offset without its minus sign (the sign was already used above to pick the side)
     int turnDeg = offsetDeg;
     if (turnDeg < 0)
