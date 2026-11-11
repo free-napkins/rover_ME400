@@ -72,7 +72,7 @@ const int SEEK_MAX_ANGLE = 160;         // from handout
 const int MAX_TARGET_DIST_CM = 200;     // from handout
 const int STOP_DISTANCE_CM = 2;         // from handout
 const float TrackWidthCm = 11.43;        // MEASURE wheel center to wheel center
-const bool PAN_ABOVE_90_IS_LEFT = true; // flip if the robot turns away from the target
+const bool PAN_ABOVE_90_IS_LEFT = false; // flip if the robot turns away from the target
 
 // bools for option completion
 bool opt_1 = false;
