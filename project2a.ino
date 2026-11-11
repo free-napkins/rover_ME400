@@ -107,6 +107,8 @@ void ShowDisplay(screen val, char optionstate, char keypressed, bool initdisplay
 // *************************************************************************************
 // BEGIN: USER FUNCTION
 // *************************************************************************************
+
+//clear screen function
 void clearText(int32_t x, int32_t y, int32_t width, uint16_t color)
 {
     int32_t xStart;
@@ -126,7 +128,6 @@ void updateDriveDisplay(float rightDuty, unsigned long leftCnt, unsigned long ri
 // Functions used in option 2
 
 void processKeyInput(char keypressed, String &aval);
-long calculateTargetCounts(float Distance, float wheelDiameter, int countsPerRev);
 void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1 );
 void servowrite(int pin, int angle, int numpulses);                                          // provided: moves a servo to an angle
 int calculateDistance(int tPin, int ePin);                                                   // provided: one ultrasonic reading in cm (0 = no echo)
@@ -142,7 +143,6 @@ bool Opt2_IsValidReading(int distCm);                                           
 bool Opt2_ScanForTarget(int minAngle, int maxAngle, int &targetDistCm, int &targetAngleDeg); // sweep and locate the target
 void Opt2_RotateInPlace(float degrees, bool turnLeft);                                       // spin the robot in place
 void Opt2_TurnTowardTarget(int targetAngleDeg);                                              // decide which way to spin, then spin
-void Opt2_DriveForward(float distanceCm);                                                    // drive straight for a distance
 float Opt2_ForwardIncrementCm(int distCm);                                                   // how far to drive this time
 void Opt2_WaitForReturn();                                                                   // wait for the RETURN key
 
@@ -193,7 +193,6 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
         if (aval.length() == 2)
         {
             baseDuty = aval.toInt();
-            counttotarget = calculateTargetCounts(100, WheelDiameter, CountsPerRev);
             driveStraight(baseDuty, 125.0, true); // 125 input to offeset for friction and testing results
         }
     }
@@ -865,12 +864,6 @@ void processKeyInput(char keypressed, String &aval)
     }
 }
 
-long calculateTargetCounts(float Distance, float wheelDiameter, int countsPerRev)
-{
-    float wheelCircumference = 3.14159 * wheelDiameter;
-    return (long)((Distance / wheelCircumference) * countsPerRev);
-}
-
 void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
 {
     float adjustedRightDuty = baseDuty;
@@ -950,7 +943,7 @@ void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
                 {
                     lastDisplayUpdate = millis();
                     // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
-                    updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
+                    updateDriveDisplay(adjustedRightDuty, leftSnap, rightSnap, error);
                 }
             }
         }
@@ -1077,7 +1070,7 @@ void Opt2_SeekTarget()
         else
         {
             // Step 8: target is centered, so drive a limited distance that shrinks as we get closer
-            Opt2_DriveForward(Opt2_ForwardIncrementCm(distCm));
+            driveStraight(baseDuty,Opt2_ForwardIncrementCm(distCm),false);
         }
 
         if (!arrived && !option2Abort)
@@ -1367,66 +1360,7 @@ float Opt2_ForwardIncrementCm(int distCm)
         step = MAX_STEP_CM;
     return step;
 }
-//
-//  Opt2_DriveForward(): drive straight for distanceCm, using the same idea as Option 1:
-//  the left motor runs at FORWARD_DUTY and the right motor's duty cycle is adjusted from the
-//  difference between the two encoder counts so the robot does not curve.
-//  Each wheel is stopped on its own once its encoder reaches the target count.
-//
-void Opt2_DriveForward(float distanceCm)
-{
-    long targetCounts = Opt2_CmToCounts(distanceCm); // counts each wheel must reach
-    if (targetCounts < 1)
-        targetCounts = 1;
 
-    // Start counting from zero for this move
-    leftEncoderCount = 0;
-    rightEncoderCount = 0;
-
-    // Both phase pins HIGH = both wheels forward
-    digitalWrite(lphasedir, HIGH);
-    digitalWrite(rphasedir, HIGH);
-
-    // Start both motors at the same duty cycle
-    ledcWrite(lpwmChannel, Opt2_DutyToPWM(baseDuty));
-    ledcWrite(rpwmChannel, Opt2_DutyToPWM(baseDuty));
-
-    bool leftDone = false;
-    bool rightDone = false;
-    unsigned long startMs = millis(); // timeout protection, as in Opt2_RotateInPlace
-    while ((!leftDone || !rightDone) && (millis() - startMs) < MOVE_TIMEOUT_MS)
-    {
-        if (Opt2_CheckAbort())
-            break; // RETURN pressed: motors are already stopped
-
-        // Stop each wheel as soon as it has covered the distance
-        if (!leftDone && (long)leftEncoderCount >= targetCounts)
-        {
-            ledcWrite(lpwmChannel, 0);
-            leftDone = true;
-        }
-        if (!rightDone && (long)rightEncoderCount >= targetCounts)
-        {
-            ledcWrite(rpwmChannel, 0);
-            rightDone = true;
-        }
-
-        // Option 1 style correction, only while the right wheel is still running:
-        // error > 0 means the left wheel is ahead, so speed the right wheel up (and vice versa).
-        if (!rightDone)
-        {
-            long error = (long)leftEncoderCount - (long)rightEncoderCount;
-            float rightDuty = baseDuty + (error * OPT2_GAIN);
-            // Keep the right duty cycle between 20% and 80%, like Option 1
-            if (rightDuty < 20.0)
-                rightDuty = 20.0;
-            if (rightDuty > 80.0)
-                rightDuty = 80.0;
-            ledcWrite(rpwmChannel, Opt2_DutyToPWM(rightDuty));
-        }
-    }
-    Opt2_StopMotors();
-}
 
 
 // Put the target to the robot’s left. If it turns away from it, flip PAN_ABOVE_90_IS_LEFT.
