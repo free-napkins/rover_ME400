@@ -128,7 +128,6 @@ void updateDriveDisplay(float rightDuty, unsigned long leftCnt, unsigned long ri
 
 void processKeyInput(char keypressed, String &aval);
 long calculateTargetCounts(float Distance, float wheelDiameter, int countsPerRev);
-void straightDrive100cm(int baseDuty, long targetCounts);
 void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1 );
 void servowrite(int pin, int angle, int numpulses);                                          // provided: moves a servo to an angle
 int calculateDistance(int tPin, int ePin);                                                   // provided: one ultrasonic reading in cm (0 = no echo)
@@ -151,7 +150,6 @@ void Opt2_WaitForReturn();                                                      
 //
 //  Option1 code
 //
-
 
 void Option1(char optionstate, char keypressed, bool initdisplay)
 {
@@ -201,7 +199,7 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
         }
     }
 }
-//
+
 
 //
 //  Option3 code
@@ -868,104 +866,6 @@ long calculateTargetCounts(float Distance, float wheelDiameter, int countsPerRev
 {
     float wheelCircumference = 3.14159 * wheelDiameter;
     return (long)((Distance / wheelCircumference) * countsPerRev);
-}
-
-void straightDrive100cm(int baseDuty, long targetCounts)
-{
-    bool rerunRequested = true; // Create variable in case of rerunning in option 1
-
-    while (rerunRequested)
-    {
-        rerunRequested = false;
-        // Reset Encoder Counts
-        leftEncoderCount = 0;
-        rightEncoderCount = 0;
-
-        // Calculate Ntarget for 100 cm
-        float wheelCircumference = 3.14159 * WheelDiameter;          // get the circumference of the wheel by pi*diameter
-        counttotarget = (100.0 / wheelCircumference) * CountsPerRev; // find the numbre of encoder counts to the target of 100 cm
-
-        // Step 5d: Initial motor commands (Forward direction)
-        digitalWrite(lphasedir, HIGH);
-        digitalWrite(rphasedir, HIGH);
-
-        float leftPWM = (float)baseDuty * maxDutyCycle / 100.0;
-        float rightDuty = baseDuty;
-        float rightPWM = leftPWM;                  // Starts equal to base duty cycle
-        float gainfactor = 0.08;                   // Gain factor (change this if not working properly)
-        float adjustedRightDuty = (float)baseDuty; // define the adjusted duty cycle
-
-        ledcWrite(lpwmChannel, leftPWM);
-        ledcWrite(rpwmChannel, rightPWM);
-
-        unsigned long lastDisplayUpdate = millis();
-
-        // Step 5e-h: Loop until both wheels hit target distance or POWER ('P') pressed
-        while ((long)leftEncoderCount < counttotarget || (long)rightEncoderCount < counttotarget)
-        {
-
-            // Check for emergency stop key ('P')
-            IR_KEYS currentKey = oIR.GetKeyPressed();
-            if (oIR.TranslateKey(currentKey) == 'P')
-            {
-                break; // Stop loop immediately
-            }
-
-            long error = (long)leftEncoderCount - (long)rightEncoderCount; // Calculate Error
-            adjustedRightDuty = baseDuty + (error * gainfactor);
-
-            // Clamp right motor duty cycle between 20% and 80%
-            if (adjustedRightDuty < 20.0)
-                adjustedRightDuty = 20.0;
-            if (adjustedRightDuty > 80.0)
-                adjustedRightDuty = 80.0;
-
-            rightPWM = adjustedRightDuty * maxDutyCycle / 100.0;
-            ledcWrite(rpwmChannel, rightPWM);
-
-            // Step 5g: Update TFT display every 1.0 second
-            if (millis() - lastDisplayUpdate >= 1000)
-            {
-                lastDisplayUpdate = millis();
-                // Update TFT with RIGHT DUTY CYCLE, LEFT COUNT, RIGHT COUNT, ERROR
-                updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, error);
-            }
-        }
-        // Emergency Stop Motor PWM (Step 5h/i)
-        ledcWrite(lpwmChannel, 0);
-        ledcWrite(rpwmChannel, 0);
-
-        // Final TFT Screen Refresh
-        long finalError = (long)leftEncoderCount - (long)rightEncoderCount;
-        updateDriveDisplay(adjustedRightDuty, leftEncoderCount, rightEncoderCount, finalError);
-
-        // Option 1 counts as complete only if both wheels reached the full 100 cm (not stopped early with POWER).
-        // Set here, before the menu is redrawn below, so option 2 shows as unlocked right away.
-        if ((long)leftEncoderCount >= counttotarget && (long)rightEncoderCount >= counttotarget)
-        {
-            opt_1 = true;
-        }
-
-        // Post-Run Decision Loop (Step 6)
-        bool waitingForUserChoice = true;
-        while (waitingForUserChoice)
-        {
-            IR_KEYS keyAfterStop = oIR.GetKeyPressed();
-            char translatedKey = oIR.TranslateKey(keyAfterStop);
-
-            if (keyAfterStop == KEY_MENU || translatedKey == 'M')
-            {
-                waitingForUserChoice = false;
-                ShowDisplay(SC_MAIN, ' ', ' '); // Return to main menu
-            }
-            else if (keyAfterStop == KEY_RETURN || translatedKey == 'R')
-            {
-                waitingForUserChoice = false;
-                rerunRequested = true; // Repeat drive test
-            }
-            delay(50);
-        }
-    }
 }
 
 void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
