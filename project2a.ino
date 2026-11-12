@@ -50,7 +50,6 @@ bool opt_1 = false;
 long counttotarget = 0;
 
 // Globals for option 2
-// Scanning
 const int ScanStep = 3;                 // how far the pan servo moves between readings
 const int NarrowScan2 = 30;             // after the first full sweep, only scan 90 +/- this amount of degrees
 const int SameTargetDeg = 5;            // angles whose reading is within this of the closest one are treated as the same target
@@ -307,13 +306,13 @@ void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
 
         // Calculate target encoder counts for the specified distance
         float wheelCircumference = 3.14159 * WheelDiameter;
-        long targetCounts = (long)((targetDistanceCm / wheelCircumference) * CountsPerRev);
+        long targetCounts = (long)(((targetDistanceCm) / wheelCircumference) * CountsPerRev);
 
         // Set motor direction to forward
         digitalWrite(lphasedir, HIGH);
         digitalWrite(rphasedir, HIGH);
 
-        float gainFactor = 0.04;
+        float gainFactor = 0.01;
 
         int leftPWM = (int)(baseDuty * maxDutyCycle / 100.0);
         int rightPWM = leftPWM;
@@ -324,10 +323,11 @@ void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
         long leftSnap = 0;
         long rightSnap = 0;
         long avgCounts = 0;
+        long error =0;
 
         unsigned long lastDisplayUpdate = millis();
 
-        while (avgCounts < targetCounts)
+        while (leftEncoderCount < targetCounts)
         {
             // Check for emergency stop key ('P')
             IR_KEYS currentKey = oIR.GetKeyPressed();
@@ -341,13 +341,10 @@ void driveStraight(int baseDuty, float targetDistanceCm, bool isOption1)
             {
                 opt_1 = true;
             }
-
             leftSnap = leftEncoderCount;
             rightSnap = rightEncoderCount;
+            error = leftSnap - rightSnap;
             avgCounts = (leftSnap + rightSnap) / 2;
-
-            // calculate error
-            long error = leftSnap - rightSnap;
             adjustedRightDuty = (float)baseDuty + (error * gainFactor);
 
             if (adjustedRightDuty < 20.0)
@@ -457,7 +454,7 @@ void Option1(char optionstate, char keypressed, bool initdisplay)
         if (aval.length() == 2)
         {
             baseDuty = aval.toInt();
-            driveStraight(baseDuty, 125.0, true); // 125 input to offeset for friction and testing results
+            driveStraight(baseDuty, 100.0, true); 
         }
     }
 }
